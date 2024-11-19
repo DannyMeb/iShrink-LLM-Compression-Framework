@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 import logging
 import wandb
 from pathlib import Path
+from collections import defaultdict  # Add this import
+import gc
+logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -201,37 +204,56 @@ class PPOAgent:
         return action.item(), value.item(), log_prob.item()
     
     def train_episode(self, env) -> Dict[str, float]:
-        """Train for one episode"""
+        """Train for one episode with memory optimization"""
+        # Clear GPU cache before episode
+        torch.cuda.empty_cache()
+        gc.collect()
+
         state = env.reset()
         done = False
         episode_reward = 0
         episode_steps = 0
         episode_metrics = defaultdict(list)
         
-        while not done:
-            # Select action
-            action, value, log_prob = self.select_action(state)
-            
-            # Execute action
-            next_state, reward, done, info = env.step(action)
-            
-            # Store transition
-            self.memory.store(state, action, reward, value, log_prob, done)
-            
-            # Update statistics
-            episode_reward += reward
-            episode_steps += 1
-            episode_metrics['values'].append(value)
-            episode_metrics['rewards'].append(reward)
-            
-            # Update state
-            state = next_state
-            
-            # Update policy if enough steps
-            if len(self.memory.states) >= self.memory.batch_size:
-                update_metrics = self.update()
-                for k, v in update_metrics.items():
-                    episode_metrics[k].append(v)
+        # Enable automatic mixed precision for better memory efficiency
+        with torch.cuda.amp.autocast():
+            while not done:
+                # Track memory usage
+                if episode_steps % 10 == 0:  # Log every 10 steps
+                    current_memory = torch.cuda.memory_allocated() / 1024**2
+                    logger.debug(f"GPU Memory Usage: {current_memory:.2f}MB")
+                
+                # Select action
+                action, value, log_prob = self.select_action(state)
+                
+                # Execute action
+                next_state, reward, done, info = env.step(action)
+                
+                # Store transition (with memory check)
+                if len(self.memory.states) * state.nbytes / 1024**2 < 1000:  # Keep memory buffer under 1GB
+                    self.memory.store(state, action, reward, value, log_prob, done)
+                else:
+                    # Force update if memory buffer is full
+                    _ = self.update()
+                    self.memory.store(state, action, reward, value, log_prob, done)
+                
+                # Update statistics
+                episode_reward += reward
+                episode_steps += 1
+                episode_metrics['values'].append(value)
+                episode_metrics['rewards'].append(reward)
+                
+                # Update state
+                state = next_state
+                
+                # Update policy if enough steps
+                if len(self.memory.states) >= self.memory.batch_size:
+                    # Clear unnecessary memory before update
+                    torch.cuda.empty_cache()
+                    
+                    update_metrics = self.update()
+                    for k, v in update_metrics.items():
+                        episode_metrics[k].append(v)
         
         # Update learning rate
         self.scheduler.step(episode_reward)
@@ -239,6 +261,14 @@ class PPOAgent:
         # Track best reward
         if episode_reward > self.best_reward:
             self.best_reward = episode_reward
+            
+            # Save best model state with memory cleanup
+            torch.cuda.empty_cache()
+            if hasattr(self, 'best_state_dict'):
+                del self.best_state_dict
+            self.best_state_dict = {
+                k: v.cpu().clone() for k, v in self.actor_critic.state_dict().items()
+            }
         
         self.current_episode += 1
         
@@ -248,7 +278,8 @@ class PPOAgent:
             'episode_steps': episode_steps,
             'average_value': np.mean(episode_metrics['values']),
             'average_reward': np.mean(episode_metrics['rewards']),
-            'best_reward': self.best_reward
+            'best_reward': self.best_reward,
+            'memory_usage_mb': torch.cuda.memory_allocated() / 1024**2
         }
         
         # Add policy update statistics if any
@@ -258,6 +289,10 @@ class PPOAgent:
                 'average_value_loss': np.mean(episode_metrics['value_loss']),
                 'average_total_loss': np.mean(episode_metrics['total_loss'])
             })
+
+        # Final memory cleanup
+        torch.cuda.empty_cache()
+        gc.collect()
         
         return statistics
     
