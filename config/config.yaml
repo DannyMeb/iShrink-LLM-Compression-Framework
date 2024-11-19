@@ -4,8 +4,10 @@ model:
   local_path: null
   device: "cuda"
   precision: "float16"
-  batch_size: 32
+  batch_size: 8  # Reduced from 16 for initial loading
   max_seq_length: 512
+  low_cpu_mem_usage: true
+  gradient_checkpointing: true
   tokenizer_kwargs:
     padding: true
     truncation: true
@@ -27,16 +29,19 @@ pruning:
   importance:
     methods: ["gradient", "activation", "fisher"]
     weights: [0.4, 0.4, 0.2]
-    num_samples: 100
-    batch_size: 16
+    num_samples: 50  # Reduced from 100
+    batch_size: 8    # Reduced from 16
     gradient_accumulation: true
+    use_mixed_precision: true    # Added
+    memory_efficient: true       # Added
+    max_memory_usage: 20000     # Added (20GB max usage)
 
 # RL Configuration
 rl:
   ppo:
     learning_rate: 3.0e-4
     n_epochs: 10
-    batch_size: 64
+    batch_size: 32              # Reduced from 64
     gamma: 0.99
     gae_lambda: 0.95
     clip_ratio: 0.2
@@ -56,28 +61,56 @@ rl:
 # Training Configuration
 training:
   data:
+    dataset: "wikitext"
+    dataset_config: "wikitext-2-raw-v1"
+    num_samples: 1000
+    batch_size: 8               # Reduced from 32
+    max_seq_length: 512
+    eval_batch_size: 4          # Reduced from 8
+    prefetch_factor: 2
     eval_split: 0.1
-    num_workers: 4
+    num_workers: 2              # Reduced from 4
     shuffle: true
   
   optimization:
     num_episodes: 100
     checkpoint_freq: 10
+    gradient_accumulation_steps: 4  # Increased from 2 to compensate for smaller batch
+    mixed_precision: true
+    max_gradient_norm: 1.0
     early_stopping:
       patience: 5
       min_delta: 0.01
+    memory_efficient_backprop: true  # Added
+    offload_optimizer: true          # Added
+    dynamic_batch_sizing: true       # Added
   
   logging:
     log_freq: 1
     use_wandb: false
     project_name: "llm-pruning"
     metrics_dir: "experiments/results/metrics"
+    log_memory_usage: true    # Added
 
 # System
 system:
   seed: 42
-  num_workers: 4
+  num_workers: 2              # Reduced from 4
   pin_memory: true
   log_level: "INFO"
   save_dir: "experiments/results"
   checkpoint_dir: "experiments/results/checkpoints"
+  max_memory_usage: 22000     # Added (22GB max usage)
+  memory_monitoring: true     # Added
+  emergency_memory_recovery: true  # Added
+
+# Memory Management (New Section)
+memory:
+  gpu_memory_fraction: 0.9    # Use 90% of available GPU memory
+  cleanup_interval: 10        # Cleanup every 10 steps
+  batch_auto_scaling: true    # Automatically adjust batch size
+  min_free_memory: 2000      # Minimum 2GB free memory
+  monitoring:
+    enabled: true
+    log_interval: 100
+    alert_threshold: 0.95

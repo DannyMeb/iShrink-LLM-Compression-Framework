@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import logging
 from .utils import setup_device, create_dataloader
 from .dependency_graph import PruningGroup
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -55,62 +56,129 @@ class ImportanceScorer:
         if sum(self.config['weights']) != 1.0:
             raise ValueError("Importance weights must sum to 1.0")
     
-    def compute_group_importance(self, 
-                               group: PruningGroup,
-                               use_cache: bool = True) -> ImportanceMetrics:
-        """Compute importance metrics for parameter group"""
+    def compute_group_importance(self,
+                            group: PruningGroup,
+                            use_cache: bool = True) -> ImportanceMetrics:
+        """Compute importance metrics for parameter group with memory optimization"""
+        # Check cache first
         if use_cache and group.id in self.score_cache:
             return self.score_cache[group.id]
         
-        metrics = ImportanceMetrics(
-            gradient_norm=0.0,
-            activation_impact=0.0,
-            fisher_info=0.0,
-            additional_metrics={}
-        )
+        # Clear GPU cache before computation
+        torch.cuda.empty_cache()
+        gc.collect()
         
-        # Compute different importance metrics
-        methods_map = {
-            'gradient': self._compute_gradient_importance,
-            'activation': self._compute_activation_importance,
-            'fisher': self._compute_fisher_importance
-        }
-        
-        for method, weight in zip(self.config['methods'], self.config['weights']):
-            if method in methods_map:
-                value = methods_map[method](group)
-                setattr(metrics, f"{method}_importance", value)
-                metrics.combined_score += weight * value
-        
-        # Compute confidence based on metric agreement
-        metrics.confidence = self._compute_confidence(metrics)
-        
-        if use_cache:
-            self.score_cache[group.id] = metrics
-        
-        return metrics
+        try:
+            # Use automatic mixed precision for better memory efficiency
+            with torch.cuda.amp.autocast():
+                metrics = ImportanceMetrics(
+                    gradient_norm=0.0,
+                    activation_impact=0.0,
+                    fisher_info=0.0,
+                    additional_metrics={
+                        'memory_usage': torch.cuda.memory_allocated() / 1024**2
+                    }
+                )
+                
+                # Compute different importance metrics
+                methods_map = {
+                    'gradient': self._compute_gradient_importance,
+                    'activation': self._compute_activation_importance,
+                    'fisher': self._compute_fisher_importance
+                }
+                
+                # Prepare weights and methods
+                methods = self.config['methods']
+                weights = self.config['weights']
+                
+                # Compute each importance metric with memory management
+                for method, weight in zip(methods, weights):
+                    if method in methods_map:
+                        # Clear cache before each computation
+                        torch.cuda.empty_cache()
+                        
+                        # Compute importance with smaller batch if needed
+                        try:
+                            value = methods_map[method](group)
+                        except RuntimeError as e:
+                            if "out of memory" in str(e):
+                                logger.warning(f"OOM in {method}, trying with reduced batch")
+                                # Reduce batch size temporarily
+                                original_batch_size = self.config.get('batch_size', 32)
+                                self.config['batch_size'] = max(1, original_batch_size // 2)
+                                value = methods_map[method](group)
+                                self.config['batch_size'] = original_batch_size
+                        
+                        # Set the computed value
+                        setattr(metrics, f"{method}_importance", value)
+                        metrics.combined_score += weight * value
+                        
+                        # Track memory usage
+                        metrics.additional_metrics[f'{method}_memory'] = (
+                            torch.cuda.memory_allocated() / 1024**2
+                        )
+                
+                # Compute confidence based on metric agreement
+                metrics.confidence = self._compute_confidence(metrics)
+                
+                # Cache the results
+                if use_cache:
+                    self.score_cache[group.id] = metrics
+                
+                return metrics
+                
+        except Exception as e:
+            logger.error(f"Error computing importance for group {group.id}: {str(e)}")
+            raise
+        finally:
+            # Final cleanup
+            torch.cuda.empty_cache()
+            gc.collect()
     
     def _compute_gradient_importance(self, group: PruningGroup) -> float:
-        """Compute gradient-based importance"""
-        self.model.zero_grad()
-        gradient_norms = []
+        """Compute gradient-based importance with memory optimization"""
+        try:
+            with torch.cuda.amp.autocast():
+                self.model.zero_grad()
+                importance = 0.0
+                
+                # Process in smaller batches if needed
+                batch_size = self.config.get('batch_size', 32)
+                for batch in self._get_batches(batch_size):
+                    outputs = self.model(batch)
+                    loss = outputs.loss / batch_size  # Normalize by batch size
+                    loss.backward()
+                    
+                    for param in group.parameters.values():
+                        if param.grad is not None:
+                            importance += torch.abs(param.grad * param).sum().item()
+                    
+                    # Clear gradients after each batch
+                    self.model.zero_grad()
+                    
+                return importance
+                
+        finally:
+            # Ensure gradients are cleared
+            self.model.zero_grad()
+            torch.cuda.empty_cache()
+
+    def _get_batches(self, batch_size: int):
+        """Helper to get data batches with memory consideration"""
+        dataset_size = len(self.calibration_data)
+        indices = torch.randperm(dataset_size)
         
-        for batch in self.dataloader:
-            inputs = batch[0].to(self.device)
-            outputs = self.model(inputs)
-            loss = outputs.loss
-            loss.backward()
+        for start_idx in range(0, dataset_size, batch_size):
+            end_idx = min(start_idx + batch_size, dataset_size)
+            batch_indices = indices[start_idx:end_idx]
             
-            # Compute gradient norms for group parameters
-            batch_norms = []
-            for param in group.parameters.values():
-                if param.grad is not None:
-                    norm = torch.norm(param.grad * param).item()
-                    batch_norms.append(norm)
-            
-            gradient_norms.extend(batch_norms)
-        
-        return np.mean(gradient_norms) if gradient_norms else 0.0
+            # Move batch to GPU only when needed
+            batch = self.calibration_data[batch_indices].to(self.device)
+            yield batch
+            # Move batch back to CPU
+            batch = batch.cpu()
+            torch.cuda.empty_cache()
+    
     
     def _compute_activation_importance(self, group: PruningGroup) -> float:
         """Compute activation-based importance"""
