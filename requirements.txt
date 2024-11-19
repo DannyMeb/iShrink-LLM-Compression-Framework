@@ -1,0 +1,46 @@
+# Core Dependencies
+torch>=2.0.0
+transformers>=4.30.0
+numpy>=1.24.0
+networkx>=3.0
+PyYAML>=6.0
+
+# Machine Learning & RL
+gym>=0.26.0
+stable-baselines3>=2.0.0
+scikit-learn>=1.0.0
+
+# Metrics & Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+wandb>=0.15.0  # For experiment tracking
+pandas>=2.0.0
+
+# Utilities
+tqdm>=4.65.0  # Progress bars
+psutil>=5.9.0  # System metrics
+pyarrow>=12.0.0  # Efficient data handling
+datasets>=2.12.0  # HuggingFace datasets
+
+# Development Tools
+black>=23.3.0  # Code formatting
+isort>=5.12.0  # Import sorting
+flake8>=6.0.0  # Linting
+pytest>=7.3.1  # Testing
+
+# Optional Dependencies
+tensorboard>=2.13.0  # For local visualization
+jsonschema>=4.17.0  # For config validation
+boto3>=1.26.0  # For AWS integration (optional)
+ray>=2.5.0  # For distributed training (optional)
+
+# Version Control
+pre-commit>=3.3.0  # Git hooks
+
+# Documentation
+sphinx>=7.0.0  # Documentation generation
+sphinx-rtd-theme>=1.2.0  # Documentation theme
+
+# Add version constraints to prevent conflicts
+setuptools>=65.0.0
+wheel>=0.40.0
