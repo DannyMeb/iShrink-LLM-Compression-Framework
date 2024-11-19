@@ -5,6 +5,9 @@ from pathlib import Path
 import logging
 import yaml
 from torch.utils.data import Dataset, DataLoader
+import torch
+import psutil
+import gc
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -116,3 +119,38 @@ def set_random_seeds(seed: int):
     import numpy as np
     random.seed(seed)
     np.random.seed(seed)
+
+class MemoryManager:
+    @staticmethod
+    def clear_cache():
+        """Clear GPU cache and garbage collect"""
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    @staticmethod
+    def get_memory_stats():
+        """Get current memory usage"""
+        gpu_stats = {}
+        if torch.cuda.is_available():
+            gpu_stats = {
+                'gpu_allocated': f"{torch.cuda.memory_allocated() / 1024**2:.2f}MB",
+                'gpu_cached': f"{torch.cuda.memory_reserved() / 1024**2:.2f}MB",
+                'gpu_max_allocated': f"{torch.cuda.max_memory_allocated() / 1024**2:.2f}MB"
+            }
+        
+        cpu_stats = {
+            'ram_used': f"{psutil.Process().memory_info().rss / 1024**2:.2f}MB",
+            'ram_percent': f"{psutil.virtual_memory().percent}%"
+        }
+        
+        return {'gpu': gpu_stats, 'cpu': cpu_stats}
+
+    @staticmethod
+    def check_memory_availability(required_memory_mb: int) -> bool:
+        """Check if enough GPU memory is available"""
+        if torch.cuda.is_available():
+            free_memory = (torch.cuda.get_device_properties(0).total_memory - 
+                          torch.cuda.memory_allocated()) / 1024**2
+            return free_memory >= required_memory_mb
+        return False

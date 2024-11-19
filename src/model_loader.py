@@ -3,7 +3,7 @@ import torch
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from typing import Tuple, Optional, Dict, Any
 import logging
-from .utils import ModelConfig, calculate_model_size, setup_device
+from .utils import ModelConfig, calculate_model_size, setup_device, MemoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -24,28 +24,28 @@ class ModelLoader:
         # Set precision
         self.dtype = torch.float16 if config.precision == "float16" else torch.float32
         
-    def load(self) -> Tuple[LlamaForCausalLM, LlamaTokenizer, Dict[str, Any]]:
-        """Load model and return with metadata"""
-        if self._check_local_model():
-            model, tokenizer = self._load_local()
-        else:
-            model, tokenizer = self._download_and_save()
-        
-        # Calculate model statistics
-        num_params, memory_size = calculate_model_size(model)
-        
-        metadata = {
-            'num_params': num_params,
-            'memory_size': memory_size,
-            'device': self.device,
-            'dtype': self.dtype,
-            'model_name': self.config.name
-        }
-        
-        logger.info(f"Loaded model with {num_params:,} parameters, "
-                   f"using {memory_size:.2f}MB memory")
-        
-        return model, tokenizer, metadata
+    def load(self) -> Tuple[LlamaForCausalLM, LlamaTokenizer]:
+        """Load model with memory optimizations"""
+        try:
+            MemoryManager.clear_cache()
+            
+            model = LlamaForCausalLM.from_pretrained(
+                self.config.name,
+                torch_dtype=torch.float16,
+                low_cpu_mem_usage=True,
+                gradient_checkpointing=True,
+                device_map='auto',  # Automatically handle memory mapping
+                offload_folder="offload"  # Temporary storage for weight offloading
+            )
+            
+            tokenizer = LlamaTokenizer.from_pretrained(self.config.name)
+            
+            logger.info(f"Model loaded. Memory usage: {MemoryManager.get_memory_stats()}")
+            return model, tokenizer
+            
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+            raise
 
     def _check_local_model(self) -> bool:
         """Check if model exists locally"""
