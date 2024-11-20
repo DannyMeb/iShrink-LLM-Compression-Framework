@@ -54,8 +54,8 @@ if ! command -v conda &> /dev/null; then
 fi
 
 # Configuration
-ENV_NAME="llm_pruning"
-PYTHON_VERSION="3.9"
+ENV_NAME="shrinker"
+PYTHON_VERSION="3.10"
 HF_TOKEN=""  # Will be set by user input
 
 # Check if CUDA is available
@@ -71,30 +71,26 @@ echo "GPU Information:"
 nvidia-smi
 
 # Create and activate conda environment
-echo "Creating conda environment..."
-conda create -y -n $ENV_NAME python=$PYTHON_VERSION || error_exit "Failed to create conda environment"
-print_success "Conda environment created successfully!"
+# echo "Creating conda environment..."
+# conda create -y -n $ENV_NAME python=$PYTHON_VERSION || error_exit "Failed to create conda environment"
+# print_success "Conda environment created successfully!"
 
 # Activate conda environment
 echo "Activating conda environment..."
 source $(conda info --base)/etc/profile.d/conda.sh
 conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 
-# Install PyTorch with CUDA
-echo "Installing PyTorch with CUDA..."
-conda install -y pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia || error_exit "Failed to install PyTorch"
-
 # Install other requirements
-echo "Installing other requirements..."
-pip install -r requirements.txt || error_exit "Failed to install requirements"
+# echo "Installing other requirements..."
+# pip install -r requirements.txt || error_exit "Failed to install requirements"
 
 # Get HuggingFace token
-echo -n "Please enter your HuggingFace token: "
-read -r token
-if [ -z "$token" ]; then
-    error_exit "HuggingFace token is required"
-fi
-export HF_TOKEN=$token
+# echo -n "Please enter your HuggingFace token: "
+# read -r token
+# if [ -z "$token" ]; then
+#     error_exit "HuggingFace token is required"
+# fi
+export HF_TOKEN=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
 
 # Create necessary directories
 mkdir -p experiments/results
