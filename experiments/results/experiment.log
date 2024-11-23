@@ -1,6 +1,6 @@
-=== Experiment Start: Wed Nov 20 09:37:39 PM +04 2024 ===
+=== Experiment Start: Sat Nov 23 04:37:37 PM UTC 2024 ===
 GPU Information:
-Wed Nov 20 21:37:39 2024       
+Sat Nov 23 16:37:37 2024       
 +---------------------------------------------------------------------------------------+
 | NVIDIA-SMI 535.104.05             Driver Version: 535.104.05   CUDA Version: 12.2     |
 |-----------------------------------------+----------------------+----------------------+
@@ -8,9 +8,9 @@ Wed Nov 20 21:37:39 2024
 | Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
 |                                         |                      |               MIG M. |
 |=========================================+======================+======================|
-|   0  Quadro RTX 6000                On  | 00000000:73:00.0  On |                  Off |
-| 33%   34C    P2              67W / 260W |    609MiB / 24576MiB |      0%      Default |
-|                                         |                      |                  N/A |
+|   0  NVIDIA A100-SXM4-40GB          Off | 00000000:00:04.0 Off |                    0 |
+| N/A   31C    P0              42W / 400W |      2MiB / 40960MiB |      0%      Default |
+|                                         |                      |             Disabled |
 +-----------------------------------------+----------------------+----------------------+
                                                                                          
 +---------------------------------------------------------------------------------------+
@@ -18,10 +18,7 @@ Wed Nov 20 21:37:39 2024
 |  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
 |        ID   ID                                                             Usage      |
 |=======================================================================================|
-|    0   N/A  N/A    572256      C   ...ng/.conda/envs/llama-env/bin/python      164MiB |
-|    0   N/A  N/A   2658149      G   /usr/lib/xorg/Xorg                          327MiB |
-|    0   N/A  N/A   2712508      G   xfwm4                                         4MiB |
-|    0   N/A  N/A   4187477      G   ...sion,SpareRendererForSitePerProcess      109MiB |
+|  No running processes found                                                           |
 +---------------------------------------------------------------------------------------+
 === Running Pipeline ===
 INFO:__main__:Initialized pruning pipeline with device: cuda
@@ -29,68 +26,85 @@ INFO:__main__:Loading model and data...
 INFO:src.model_loader:Model not found locally. Downloading...
 INFO:src.model_loader:Downloading model meta-llama/Llama-3.2-1B-Instruct...
 INFO:accelerate.utils.modeling:We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
-WARNING:accelerate.big_modeling:Some parameters are on the meta device because they were offloaded to the cpu.
-INFO:src.model_loader:Saving model to models/llama-3.2-1b"
-/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/transformers/modeling_utils.py:2869: UserWarning: Attempting to save a model with offloaded modules. Ensure that unallocated cpu memory exceeds the `shard_size` (5GB default)
-  warnings.warn(
-Saving checkpoint shards:   0%|          | 0/1 [00:00<?, ?it/s]Saving checkpoint shards:   0%|          | 0/1 [00:01<?, ?it/s]
-ERROR:src.model_loader:Failed to load model: Failed to download model: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-ERROR:__main__:Pipeline failed: Failed to download model: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-Traceback (most recent call last):
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 120, in _download_and_save
-    model.save_pretrained(self.local_path)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/transformers/modeling_utils.py", line 3019, in save_pretrained
-    shard_state_dict = get_state_dict_from_offload(module, module_name, shard_state_dict)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 1577, in get_state_dict_from_offload
-    with align_module_device(module, device_to_put_offload):
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/contextlib.py", line 142, in __exit__
-    next(self.gen)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 1933, in align_module_device
-    set_module_tensor_to_device(module, name, device)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 321, in set_module_tensor_to_device
-    new_value = old_value.to(device)
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+INFO:src.model_loader:Saving model to models/Llama-3.2-1B-Instruct"
+INFO:src.model_loader:Model saved successfully
+INFO:__main__:Building dependency graph...
+INFO:src.dependency_graph:Initializing DependencyGraphBuilder for layers 14 to 15
+INFO:src.dependency_graph:Building dependency graph for last 20% of layers...
+Building Graph:   0%|          | 0/6 [00:00<?, ?it/s]Creating attention groups...
 
-During handling of the above exception, another exception occurred:
+Creating attention groups:   0%|          | 0/2 [00:00<?, ?it/s][ACreating attention groups: 100%|██████████| 2/2 [00:00<00:00, 22.33it/s]
+Creating MLP groups...
 
-Traceback (most recent call last):
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 72, in run
-    model, tokenizer, eval_dataloader = self._setup_model_and_data()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 112, in _setup_model_and_data
-    model, tokenizer = model_loader.load()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 41, in load
-    return self._download_and_save()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 127, in _download_and_save
-    raise RuntimeError(f"Failed to download model: {e}")
-RuntimeError: Failed to download model: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
-Traceback (most recent call last):
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 120, in _download_and_save
-    model.save_pretrained(self.local_path)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/transformers/modeling_utils.py", line 3019, in save_pretrained
-    shard_state_dict = get_state_dict_from_offload(module, module_name, shard_state_dict)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 1577, in get_state_dict_from_offload
-    with align_module_device(module, device_to_put_offload):
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/contextlib.py", line 142, in __exit__
-    next(self.gen)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 1933, in align_module_device
-    set_module_tensor_to_device(module, name, device)
-  File "/home/daniel.gebre/.conda/envs/shrinker/lib/python3.10/site-packages/accelerate/utils/modeling.py", line 321, in set_module_tensor_to_device
-    new_value = old_value.to(device)
-torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+Creating MLP groups:   0%|          | 0/2 [00:00<?, ?it/s][A
+Creating MLP groups:  50%|█████     | 1/2 [00:03<00:03,  3.66s/it][A
+Creating MLP groups: 100%|██████████| 2/2 [00:07<00:00,  3.58s/it][ACreating MLP groups: 100%|██████████| 2/2 [00:07<00:00,  3.59s/it]
+Building Graph:  33%|███▎      | 2/6 [00:07<00:14,  3.64s/it]INFO:src.dependency_graph:Starting structural dependency analysis...
+Adding structural dependencies...
 
-During handling of the above exception, another exception occurred:
+Processing within-layer dependencies:   0%|          | 0/2 [00:00<?, ?it/s][A
+Processing within-layer dependencies: 100%|██████████| 2/2 [00:00<00:00, 10.47it/s][AProcessing within-layer dependencies: 100%|██████████| 2/2 [00:00<00:00, 10.46it/s]
+INFO:src.dependency_graph:Completed dependency analysis with 525312 edges
+Building Graph:  50%|█████     | 3/6 [00:26<00:30, 10.02s/it]WARNING:src.dependency_graph:Found 18 ungrouped parameters in target layers
+WARNING:src.dependency_graph:Found 18 ungrouped parameters in target layers
 
+Processing cross-layer dependencies...
+Processed layer 14 → 15
+Adding dimensional dependencies...
+Validating and optimizing graph...
+Validating graph structure...
+Validating parameter assignments...
+Validating parameter assignments...
+Optimizing graph structure...
+Large graph detected, using SCC-based optimization...
+Optimizing using strongly connected components...
+Reduced edges by 0.0% (525312 → 525312)
+Updating group dependencies...
+
+  0%|          | 0/16448 [00:00<?, ?it/s][A100%|██████████| 16448/16448 [00:00<00:00, 399596.35it/s]
+Building Graph:  67%|██████▋   | 4/6 [00:28<00:14,  7.13s/it]Building Graph:  67%|██████▋   | 4/6 [00:28<00:14,  7.13s/it]
+INFO:src.dependency_graph:Built dependency graph with 16448 groups and 525312 dependencies
+INFO:src.dependency_graph:Saved dependency graph visualization to experiments/results/dependency_graph.png
+INFO:__main__:Calculating importance scores...
+INFO:src.importance_scorer:Initialized ImportanceScorer with methods: ['gradient', 'activation', 'fisher']
+Generating graph visualization...
+Computing layout...
+Drawing nodes...
+Drawing edges...
+Adding labels...
+Saving visualization to experiments/results/dependency_graph.png...
+Calculating importance scores:   0%|          | 0/16448 [00:00<?, ?it/s]/content/LLM-Compression/src/importance_scorer.py:73: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+/content/LLM-Compression/src/importance_scorer.py:141: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  with torch.cuda.amp.autocast():
+ERROR:src.importance_scorer:Error computing importance for group attn_l14_h0: 'ImportanceScorer' object has no attribute 'calibration_data'
+Calculating importance scores:   0%|          | 0/16448 [00:20<?, ?it/s]
+ERROR:__main__:Pipeline failed: 'ImportanceScorer' object has no attribute 'calibration_data'
 Traceback (most recent call last):
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 315, in <module>
+  File "/content/LLM-Compression/run_pipeline.py", line 81, in run
+    self._calculate_importance_scores(groups, scorer)
+  File "/content/LLM-Compression/run_pipeline.py", line 170, in _calculate_importance_scores
+    score = scorer.compute_group_importance(group)
+  File "/content/LLM-Compression/src/importance_scorer.py", line 102, in compute_group_importance
+    value = methods_map[method](group)
+  File "/content/LLM-Compression/src/importance_scorer.py", line 147, in _compute_gradient_importance
+    for batch in self._get_batches(batch_size):
+  File "/content/LLM-Compression/src/importance_scorer.py", line 168, in _get_batches
+    dataset_size = len(self.calibration_data)
+AttributeError: 'ImportanceScorer' object has no attribute 'calibration_data'
+Traceback (most recent call last):
+  File "/content/LLM-Compression/run_pipeline.py", line 315, in <module>
     main()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 312, in main
+  File "/content/LLM-Compression/run_pipeline.py", line 312, in main
     pipeline.run()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 72, in run
-    model, tokenizer, eval_dataloader = self._setup_model_and_data()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py", line 112, in _setup_model_and_data
-    model, tokenizer = model_loader.load()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 41, in load
-    return self._download_and_save()
-  File "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/src/model_loader.py", line 127, in _download_and_save
-    raise RuntimeError(f"Failed to download model: {e}")
-RuntimeError: Failed to download model: CUDA out of memory. Tried to allocate 502.00 MiB. GPU 0 has a total capacity of 23.62 GiB of which 326.75 MiB is free. Process 572256 has 21.42 GiB memory in use. Including non-PyTorch memory, this process has 1.44 GiB memory in use. Of the allocated memory 1.28 GiB is allocated by PyTorch, and 1.94 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+  File "/content/LLM-Compression/run_pipeline.py", line 81, in run
+    self._calculate_importance_scores(groups, scorer)
+  File "/content/LLM-Compression/run_pipeline.py", line 170, in _calculate_importance_scores
+    score = scorer.compute_group_importance(group)
+  File "/content/LLM-Compression/src/importance_scorer.py", line 102, in compute_group_importance
+    value = methods_map[method](group)
+  File "/content/LLM-Compression/src/importance_scorer.py", line 147, in _compute_gradient_importance
+    for batch in self._get_batches(batch_size):
+  File "/content/LLM-Compression/src/importance_scorer.py", line 168, in _get_batches
+    dataset_size = len(self.calibration_data)
+AttributeError: 'ImportanceScorer' object has no attribute 'calibration_data'
