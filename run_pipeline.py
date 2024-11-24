@@ -121,14 +121,17 @@ class PruningPipeline:
         dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
         
         def tokenize_function(examples):
+            # Remove return_tensors="pt" from here
             return tokenizer(examples["text"],
                             truncation=True,
                             max_length=self.config["model"]["max_seq_length"],
-                            padding="max_length",
-                            return_tensors="pt")
+                            padding="max_length")
         
         # Tokenize dataset
         tokenized_dataset = dataset.map(tokenize_function, batched=True)
+        
+        # Convert to torch format
+        tokenized_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
         
         # Create dataloader
         eval_dataloader = DataLoader(
@@ -160,7 +163,7 @@ class PruningPipeline:
             model=model,
             tokenizer=tokenizer,
             config=self.config['pruning']['importance'],
-            calibration_data=eval_dataloader,
+            calibration_dataloader=eval_dataloader,
             device=self.device
         )
     

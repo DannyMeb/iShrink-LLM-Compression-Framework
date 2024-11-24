@@ -5,10 +5,9 @@ from dataclasses import dataclass, field
 from typing import Dict, Set, List, Optional, Tuple, Any
 import numpy as np
 import logging
-import matplotlib.pyplot as plt
 from pathlib import Path
 from tqdm import tqdm
-import random
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +17,7 @@ class PruningGroup:
     id: str
     layer_idx: int
     parameters: Dict[str, torch.Tensor]
-    group_type: str  # 'attention_head' or 'mlp_channel'
+    group_type: str  # 'attention_head' or 'mlp_path'
     dependencies: Set[str] = field(default_factory=set)
     size: Optional[int] = None
     memory_size: Optional[float] = None
@@ -26,28 +25,25 @@ class PruningGroup:
     metrics: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
-        """Initialize group metrics and validate parameters"""
         self._calculate_metrics()
         self._validate_parameters()
     
     def _calculate_metrics(self):
         """Calculate comprehensive metrics for the group"""
-        # Calculate size metrics
+        # Basic size metrics
         self.size = sum(p.numel() for p in self.parameters.values())
         self.memory_size = sum(p.numel() * p.element_size() 
                              for p in self.parameters.values()) / (1024 * 1024)  # MB
         
-        # Calculate parameter statistics
+        # Parameter statistics for importance scoring
         param_tensors = [p.flatten() for p in self.parameters.values()]
         if param_tensors:
             all_params = torch.cat(param_tensors)
-            
             self.metrics.update({
                 'mean': float(torch.mean(all_params)),
                 'std': float(torch.std(all_params)),
                 'l1_norm': float(torch.norm(all_params, p=1)),
                 'l2_norm': float(torch.norm(all_params, p=2)),
-                'sparsity': float(torch.mean((all_params == 0).float())),
                 'max_abs': float(torch.max(torch.abs(all_params)))
             })
     
@@ -55,12 +51,6 @@ class PruningGroup:
         """Validate parameter consistency"""
         if not self.parameters:
             raise ValueError(f"Group {self.id} has no parameters")
-        
-        for name, param in self.parameters.items():
-            if not isinstance(param, torch.Tensor):
-                raise ValueError(f"Parameter {name} in group {self.id} is not a tensor")
-            if not param.requires_grad:
-                logger.warning(f"Parameter {name} in group {self.id} does not require gradients")
     
     def get_shapes(self) -> Dict[str, torch.Size]:
         """Get shapes of all parameters in group"""
@@ -79,75 +69,82 @@ class PruningGroup:
             'metrics': self.metrics,
             'shapes': {name: list(shape) for name, shape in self.get_shapes().items()}
         }
-    
+
 class DependencyGraphBuilder:
     def __init__(self, 
                  model: nn.Module,
                  config: Dict[str, Any]):
-        """
-        Initialize dependency graph builder for last 20% of layers
-        
-        Args:
-            model: The model to analyze
-            config: Configuration dictionary with graph building parameters
-        """
+        """Initialize dependency graph builder"""
         self.model = model
         self.config = config
         self.groups: List[PruningGroup] = []
         self.graph = nx.DiGraph()
-        
-        # Track parameter mapping
         self.param_to_group: Dict[str, str] = {}
         
-        # Calculate layer range for last 20%
-        total_layers = len(self.model.model.layers)
-        start_idx = int(total_layers * 0.92)  # Start at 80% mark
-        self.layer_range = range(start_idx, total_layers)
+        # Extract relevant config parameters
+        self.pruning_config = config.get('pruning', {})
+        self.dependency_config = self.pruning_config.get('dependency', {})
         
-        logger.info(f"Initializing DependencyGraphBuilder for layers {start_idx} to {total_layers-1}")
+        # Get minimum group size from config
+        self.min_group_size = self.dependency_config.get('min_group_size', 64)
+        
+        # Initialize target layers based on pruning targets
+        self._initialize_target_layers()
+        
+        # Enable memory monitoring if specified
+        self.memory_monitoring = config.get('memory', {}).get('monitoring', {}).get('enabled', False)
+        
+        logger.info(f"Initializing DependencyGraphBuilder with {len(self.target_layers)} target layers")
+    
+    def _initialize_target_layers(self):
+        """Initialize target layers based on pruning targets"""
+        total_layers = len(self.model.model.layers)
+        
+        # Get pruning targets
+        pruning_targets = self.pruning_config.get('targets', {})
+        memory_reduction = pruning_targets.get('memory_reduction', 0.1)
+        latency_reduction = pruning_targets.get('latency_reduction', 0.1)
+        
+        # Use the more aggressive reduction target to determine layer count
+        reduction_target = max(memory_reduction, latency_reduction)
+        
+        # Calculate start index based on reduction target
+        start_idx = int(total_layers * (1 - reduction_target))
+        self.target_layers = list(range(start_idx, total_layers))
+        
+        logger.info(f"Based on reduction targets (memory: {memory_reduction}, latency: {latency_reduction}):")
+        logger.info(f"Selected layers {start_idx} to {total_layers-1} for pruning")
+        logger.info(f"This represents {len(self.target_layers)}/{total_layers} layers "
+                   f"({len(self.target_layers)/total_layers*100:.1f}%)")
     
     def build(self) -> Tuple[List[PruningGroup], nx.DiGraph]:
-        """Build complete dependency graph for last 20% of layers"""
-        logger.info("Building dependency graph for last 20% of layers...")
+        """Build dependency graph for specified layers"""
+        logger.info("Building dependency graph...")
         
         try:
-            with tqdm(total=6, desc="Building Graph") as pbar:
-                # Step 1: Create base groups
-                print("Creating attention groups...")
+            with tqdm(total=3, desc="Building Graph") as pbar:
+                # Create pruning groups
                 self._create_attention_groups()
+                if self.memory_monitoring:
+                    self._log_memory_usage("After creating attention groups")
                 pbar.update(1)
                 
-                print("Creating MLP groups...")
                 self._create_mlp_groups()
+                if self.memory_monitoring:
+                    self._log_memory_usage("After creating MLP groups")
                 pbar.update(1)
                 
-                # Step 2: Add dependencies
-                print("Adding structural dependencies...")
+                # Add dependencies
                 self._add_structural_dependencies()
-                pbar.update(1)
-                
-                print("Adding dimensional dependencies...")
-                # self._add_dimensional_dependencies()
-                # pbar.update(1)
-                
-                dependency_config = self.config.get('pruning', {}).get('dependency', {})
-                include_skip = dependency_config.get('include_skip_connections', False)
-                optimize_graph = dependency_config.get('optimize_graph', True)
-            
-                # if include_skip:
-                #     print("Adding skip connection dependencies...")
-                #     self._add_skip_connection_dependencies()
-                # pbar.update(1)
-                
-                # Step 3: Validate and optimize graph
-                print("Validating and optimizing graph...")
-                self._validate_graph()
-                if optimize_graph:
-                    self._optimize_graph()
+                if self.memory_monitoring:
+                    self._log_memory_usage("After adding dependencies")
                 pbar.update(1)
             
-            logger.info(f"Built dependency graph with {len(self.groups)} groups "
-                       f"and {self.graph.number_of_edges()} dependencies")
+            # Validate final graph
+            self._validate_graph()
+            
+            # Log final statistics
+            self._log_group_statistics()
             
             return self.groups, self.graph
             
@@ -156,8 +153,8 @@ class DependencyGraphBuilder:
             raise
     
     def _create_attention_groups(self):
-        """Create groups for attention heads (last 20% of layers only)"""
-        for layer_idx in tqdm(self.layer_range, desc="Creating attention groups"):
+        """Create groups for attention heads"""
+        for layer_idx in tqdm(self.target_layers, desc="Creating attention groups"):
             attention = self.model.model.layers[layer_idx].self_attn
             num_heads = attention.num_heads
             head_dim = attention.head_dim
@@ -166,6 +163,7 @@ class DependencyGraphBuilder:
                 start_idx = head_idx * head_dim
                 end_idx = (head_idx + 1) * head_dim
                 
+                # Group all parameters for this attention head
                 parameters = {
                     f'q_proj_{head_idx}': attention.q_proj.weight[start_idx:end_idx],
                     f'k_proj_{head_idx}': attention.k_proj.weight[start_idx:end_idx],
@@ -180,476 +178,194 @@ class DependencyGraphBuilder:
                     group_type="attention_head"
                 )
                 
-                self.groups.append(group)
-                self.graph.add_node(group.id)
-                
-                for param_name in parameters.keys():
-                    full_name = f"layer_{layer_idx}_attention_{param_name}"
-                    self.param_to_group[full_name] = group.id
+                if group.size >= self.min_group_size:
+                    self.groups.append(group)
+                    self.graph.add_node(group.id)
+                    
+                    for param_name in parameters.keys():
+                        full_name = f"layer_{layer_idx}_attention_{param_name}"
+                        self.param_to_group[full_name] = group.id
     
     def _create_mlp_groups(self):
-        """Create groups for MLP channels (last 20% of layers only)"""
-        for layer_idx in tqdm(self.layer_range, desc="Creating MLP groups"):
+        """Create groups for MLP computational paths"""
+        for layer_idx in tqdm(self.target_layers, desc="Creating MLP groups"):
             mlp = self.model.model.layers[layer_idx].mlp
-            hidden_size = mlp.gate_proj.weight.shape[0]
+            hidden_dim = mlp.up_proj.weight.shape[0]  # intermediate dimension
             
-            for channel_idx in range(hidden_size):
+            # Create a group for each complete computational path
+            for path_idx in range(hidden_dim):
+                # Group FC1 columns and FC2 row as one computational path
                 parameters = {
-                    f'gate_proj_{channel_idx}': mlp.gate_proj.weight[channel_idx],
-                    f'up_proj_{channel_idx}': mlp.up_proj.weight[channel_idx],
-                    f'down_proj_{channel_idx}': mlp.down_proj.weight[:, channel_idx]
+                    # First linear layer columns (FC1)
+                    f'gate_proj_{path_idx}': mlp.gate_proj.weight[path_idx],
+                    f'up_proj_{path_idx}': mlp.up_proj.weight[path_idx],
+                    # Second linear layer row (FC2)
+                    f'down_proj_{path_idx}': mlp.down_proj.weight[:, path_idx]
                 }
                 
                 group = PruningGroup(
-                    id=f"mlp_l{layer_idx}_c{channel_idx}",
+                    id=f"mlp_l{layer_idx}_p{path_idx}",
                     layer_idx=layer_idx,
                     parameters=parameters,
-                    group_type="mlp_channel"
+                    group_type="mlp_path"
                 )
                 
-                self.groups.append(group)
-                self.graph.add_node(group.id)
-                
-                for param_name in parameters.keys():
-                    full_name = f"layer_{layer_idx}_mlp_{param_name}"
-                    self.param_to_group[full_name] = group.id
-
+                if group.size >= self.min_group_size:
+                    self.groups.append(group)
+                    self.graph.add_node(group.id)
+                    
+                    for param_name in parameters.keys():
+                        full_name = f"layer_{layer_idx}_mlp_{param_name}"
+                        self.param_to_group[full_name] = group.id
+    
     def _add_structural_dependencies(self):
-        """Vectorized implementation of structural dependency analysis"""
-        logger.info("Starting structural dependency analysis...")
-        
-        # Step 1: Create efficient data structures
-        layer_groups = self._create_layer_groups_lookup()
-        
-        # Step 2: Process within-layer dependencies (faster path)
-        self._process_within_layer_dependencies(layer_groups)
-        
-        # Step 3: Process cross-layer dependencies (vectorized)
-        self._process_cross_layer_dependencies(layer_groups)
-        
-        logger.info(f"Completed dependency analysis with {self.graph.number_of_edges()} edges")
-
-    def _create_layer_groups_lookup(self):
-        """Create efficient lookup structure for groups by layer"""
-        layer_groups = {}
-        
-        # Pre-allocate dictionaries for all layers
-        for layer_idx in self.layer_range:
-            layer_groups[layer_idx] = {'attention': [], 'mlp': []}
-        
-        # Single pass grouping
-        for group in self.groups:
-            group_type = 'attention' if group.group_type == 'attention_head' else 'mlp'
-            layer_groups[group.layer_idx][group_type].append(group)
-        
-        return layer_groups
-
-    def _process_within_layer_dependencies(self, layer_groups):
-        """Process dependencies within each layer using vectorized operations"""
-        dependencies_to_add = []
-        
-        for layer_idx in tqdm(self.layer_range, desc="Processing within-layer dependencies"):
-            attn_groups = layer_groups[layer_idx]['attention']
-            mlp_groups = layer_groups[layer_idx]['mlp']
+        """Add structural dependencies within each layer"""
+        for layer_idx in self.target_layers:
+            # Get groups for current layer
+            attention_heads = [g for g in self.groups 
+                             if g.layer_idx == layer_idx and g.group_type == "attention_head"]
+            mlp_paths = [g for g in self.groups 
+                        if g.layer_idx == layer_idx and g.group_type == "mlp_path"]
             
-            # Create direct connections (attention -> mlp)
-            for attn_group in attn_groups:
-                for mlp_group in mlp_groups:
-                    dependencies_to_add.append((attn_group.id, mlp_group.id))
+            # Connect attention heads to MLP paths
+            for attn_group in attention_heads:
+                for mlp_group in mlp_paths:
+                    self.graph.add_edge(attn_group.id, mlp_group.id)
                     attn_group.dependencies.add(mlp_group.id)
-        
-        # Batch add dependencies
-        if dependencies_to_add:
-            self.graph.add_edges_from(dependencies_to_add)
-
-    def _process_cross_layer_dependencies(self, layer_groups):
-        """Process cross-layer dependencies using batched operations"""
-        print("\nProcessing cross-layer dependencies...")
-        layer_indices = list(self.layer_range)
-        batch_size = 1000  # Adjustable batch size
-        
-        # Pre-compute dimension information
-        dim_cache = self._create_dimension_cache()
-        
-        for i in range(len(layer_indices) - 1):
-            curr_layer_idx = layer_indices[i]
-            next_layer_idx = layer_indices[i + 1]
             
-            # Get groups for current and next layer
-            curr_groups = (layer_groups[curr_layer_idx]['attention'] + 
-                          layer_groups[curr_layer_idx]['mlp'])
-            next_groups = (layer_groups[next_layer_idx]['attention'] + 
-                          layer_groups[next_layer_idx]['mlp'])
-            
-            # Process in batches
-            dependencies = []
-            for idx in range(0, len(curr_groups), batch_size):
-                batch_curr = curr_groups[idx:idx + batch_size]
-                self._process_dependency_batch(
-                    batch_curr, next_groups, dependencies, dim_cache
-                )
-                
-                # Add batch of dependencies
-                if len(dependencies) >= batch_size:
-                    self.graph.add_edges_from(dependencies)
-                    dependencies = []
-            
-            # Add remaining dependencies
-            if dependencies:
-                self.graph.add_edges_from(dependencies)
-            
-            print(f"Processed layer {curr_layer_idx} → {next_layer_idx}")
-
-    def _create_dimension_cache(self):
-        """Create cached dimension information for all groups"""
-        dim_cache = {}
-        
-        for group in self.groups:
-            input_dims = set()
-            output_dims = set()
-            
-            # Process each parameter's dimensions
-            for param in group.parameters.values():
-                if param.dim() >= 2:  # Only process 2D+ tensors
-                    input_dims.add(param.size(0))
-                    output_dims.add(param.size(-1))
-            
-            dim_cache[group.id] = {
-                'input': input_dims,
-                'output': output_dims
-            }
-        
-        return dim_cache
-
-    def _process_dependency_batch(self, curr_batch, next_groups, dependencies, dim_cache):
-        """Process a batch of dependencies efficiently"""
-        for curr_group in curr_batch:
-            curr_dims = dim_cache[curr_group.id]
-            
-            # Find matching dimensions
-            for next_group in next_groups:
-                next_dims = dim_cache[next_group.id]
-                
-                # Quick set intersection check
-                if curr_dims['output'] & next_dims['input']:
-                    dependencies.append((curr_group.id, next_group.id))
-                    curr_group.dependencies.add(next_group.id)
-
-    def _check_structural_dependency(self, group1: PruningGroup, group2: PruningGroup) -> bool:
-        """Optimized structural dependency check using cached dimensions"""
-        # Early exit for non-adjacent layers
-        layer_diff = abs(group1.layer_idx - group2.layer_idx)
-        if layer_diff > 1:
-            return False
-        
-        # Within same layer: only attention -> mlp is valid
-        if layer_diff == 0:
-            return (group1.group_type == 'attention_head' and 
-                    group2.group_type == 'mlp_channel')
-        
-        # Use cached dimensions for cross-layer check
-        dims1 = {p.size(-1) for p in group1.parameters.values()}
-        dims2 = {p.size(0) for p in group2.parameters.values()}
-        
-        return bool(dims1 & dims2)
-
-    def _add_dimensional_dependencies(self):
-        """Add dependencies based on shared dimensions (strictly within last 20% of layers)"""
-        total_groups = len(self.groups)
-        with tqdm(total=total_groups, desc="Adding dimensional dependencies") as pbar:
-            # Only consider groups within the last 20% of layers
-            valid_groups = [g for g in self.groups if g.layer_idx in self.layer_range]
-            
-            for i, g1 in enumerate(valid_groups):
-                for g2 in valid_groups[i+1:]:
-                    if self._check_dimensional_dependency(g1, g2):
-                        self.graph.add_edge(g1.id, g2.id)
-                        g1.dependencies.add(g2.id)
-                pbar.update(1)
-
-    def _add_skip_connection_dependencies(self):
-        """Add dependencies from skip connections (strictly within last 20% of layers)"""
-        with tqdm(total=len(self.layer_range), desc="Adding skip connection dependencies") as pbar:
-            layer_indices = list(self.layer_range)
-            for i in range(len(layer_indices)):
-                curr_layer_idx = layer_indices[i]
-                
-                if hasattr(self.model.model.layers[curr_layer_idx], 'skip_connection'):
-                    # Only consider skip connections within the last 20%
-                    if i >= 2:  # Make sure we have enough previous layers within our range
-                        curr_groups = [g for g in self.groups if g.layer_idx == curr_layer_idx]
-                        prev_groups = [g for g in self.groups if g.layer_idx == layer_indices[i-2]]
-                        
-                        for curr_group in curr_groups:
-                            for prev_group in prev_groups:
-                                self.graph.add_edge(curr_group.id, prev_group.id)
-                                curr_group.dependencies.add(prev_group.id)
-                pbar.update(1)
-        
-    def _check_structural_dependency(self, group1: PruningGroup, group2: PruningGroup) -> bool:
-        """
-        Check if two groups have structural dependency.
-        Optimized version with early returns and dimension caching.
-        
-        Args:
-            group1: First pruning group
-            group2: Second pruning group
-            
-        Returns:
-            bool: True if groups have structural dependency
-        """
-        # Quick check for same layer (attention -> mlp only)
-        if group1.layer_idx == group2.layer_idx:
-            if group1.group_type == "attention_head" and group2.group_type == "mlp_channel":
-                return True
-            if group1.group_type == "mlp_channel" and group2.group_type == "attention_head":
-                return True
-            return False
-        
-        # For cross-layer dependencies, only check adjacent layers
-        if abs(group1.layer_idx - group2.layer_idx) != 1:
-            return False
-        
-        # Cache shapes for both groups
-        shapes1 = list(group1.get_shapes().values())
-        shapes2 = list(group2.get_shapes().values())
-        
-        # Get dimensions of interest
-        dims1 = {(shape[0], shape[-1]) for shape in shapes1}  # Input and output dimensions
-        dims2 = {(shape[0], shape[-1]) for shape in shapes2}
-        
-        # Check for any matching dimensions
-        for dim1_in, dim1_out in dims1:
-            for dim2_in, dim2_out in dims2:
-                # Forward dependency: output of group1 feeds into input of group2
-                if dim1_out == dim2_in:
-                    return True
-                # Backward dependency: output of group2 feeds into input of group1
-                if dim2_out == dim1_in:
-                    return True
-        
-        return False
+            logger.info(f"Layer {layer_idx}: Connected {len(attention_heads)} attention heads "
+                       f"to {len(mlp_paths)} MLP paths")
     
-    def _check_dimensional_dependency(self, group1: PruningGroup, group2: PruningGroup) -> bool:
-        """Check if two groups share dimensions"""
-        shapes1 = group1.get_shapes()
-        shapes2 = group2.get_shapes()
-        
-        for shape1 in shapes1.values():
-            for shape2 in shapes2.values():
-                if any(d1 == d2 for d1, d2 in zip(shape1, shape2)):
-                    return True
-        return False
-    
-    def _optimize_graph(self):
-        """Optimized graph structure cleanup"""
-        print("Optimizing graph structure...")
-        edges_before = self.graph.number_of_edges()
-        
-        # Instead of checking each edge individually, use batch processing
-        def remove_transitive_edges_batch():
-            # Get transitive closure once
-            closure = nx.transitive_closure(self.graph)
-            
-            # Find all direct edges that can be removed
-            edges_to_remove = []
-            
-            # Process in layers to identify redundant edges
-            for node in self.graph.nodes():
-                successors = list(self.graph.successors(node))
-                for succ in successors:
-                    # Check if there's an indirect path (length > 1) between node and successor
-                    indirect_paths = list(nx.all_simple_paths(self.graph, node, succ))
-                    if any(len(path) > 2 for path in indirect_paths):
-                        edges_to_remove.append((node, succ))
-            
-            # Batch remove edges
-            print(f"Removing {len(edges_to_remove)} transitive edges...")
-            self.graph.remove_edges_from(edges_to_remove)
-            
-            return len(edges_to_remove)
-
-        # Alternative optimization approach using strongly connected components
-        def optimize_using_scc():
-            print("Optimizing using strongly connected components...")
-            sccs = list(nx.strongly_connected_components(self.graph))
-            
-            # Collapse strongly connected components
-            mapping = {}
-            for i, scc in enumerate(sccs):
-                for node in scc:
-                    mapping[node] = f"scc_{i}"
-            
-            # Create reduced graph
-            reduced = nx.condensation(self.graph, scc=sccs)
-            
-            # Rebuild graph with minimal edges
-            new_graph = nx.DiGraph()
-            new_graph.add_nodes_from(self.graph.nodes())
-            
-            # Add essential edges back
-            for u, v in reduced.edges():
-                original_u = [n for n in sccs[u]]
-                original_v = [n for n in sccs[v]]
-                # Add only one edge between components
-                new_graph.add_edge(original_u[0], original_v[0])
-            
-            return new_graph
-
-        # Choose optimization strategy based on graph size
-        if self.graph.number_of_edges() > 100000:
-            print("Large graph detected, using SCC-based optimization...")
-            self.graph = optimize_using_scc()
-        else:
-            print("Using batch transitive edge removal...")
-            edges_removed = remove_transitive_edges_batch()
-            print(f"Removed {edges_removed} transitive edges")
-        
-        edges_after = self.graph.number_of_edges()
-        reduction = (edges_before - edges_after) / edges_before * 100
-        print(f"Reduced edges by {reduction:.1f}% ({edges_before} → {edges_after})")
-        
-        # Update group dependencies to match optimized graph
-        print("Updating group dependencies...")
-        for group in tqdm(self.groups):
-            group.dependencies = set(self.graph.predecessors(group.id))
-
     def _validate_graph(self):
-        """Validate graph structure with early stopping"""
-        print("Validating graph structure...")
-        
-        # Quick validation checks
+        """Validate graph structure"""
         if not nx.is_directed_acyclic_graph(self.graph):
-            # Find a single cycle instead of all cycles
             cycle = next(nx.simple_cycles(self.graph), None)
             if cycle:
                 raise ValueError(f"Dependency graph contains cycle: {cycle}")
         
-        # Verify layer range for nodes (sample-based validation)
-        sample_size = min(1000, len(self.graph.nodes()))
-        nodes = random.sample(list(self.graph.nodes()), sample_size)
+        # Verify all groups are from target layers
+        for group in self.groups:
+            if group.layer_idx not in self.target_layers:
+                raise ValueError(f"Group {group.id} is from layer {group.layer_idx} "
+                               f"which is not in target layers")
+    
+    def _log_memory_usage(self, stage: str):
+        """Log memory usage if monitoring is enabled"""
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated() / 1024**3
+            memory_cached = torch.cuda.memory_reserved() / 1024**3
+            logger.info(f"Memory usage at {stage}:")
+            logger.info(f"  Allocated: {memory_allocated:.2f} GB")
+            logger.info(f"  Cached: {memory_cached:.2f} GB")
+    
+    def _log_group_statistics(self):
+        """Log detailed group statistics"""
+        stats = {layer_idx: {'attention': 0, 'mlp': 0} for layer_idx in self.target_layers}
+        total_memory = 0
         
-        for node in nodes:
-            layer_idx = int(node.split('_l')[1].split('_')[0])
-            if layer_idx not in self.layer_range:
-                raise ValueError(f"Found node from outside target layer range: {node}")
+        for group in self.groups:
+            stats[group.layer_idx][group.group_type.split('_')[0]] += 1
+            total_memory += group.memory_size
         
-        # Check for isolated nodes
-        isolated = list(nx.isolates(self.graph))
-        if isolated:
-            logger.warning(f"Found {len(isolated)} isolated groups")
+        logger.info("Pruning Group Statistics:")
+        for layer_idx, layer_stats in stats.items():
+            logger.info(f"Layer {layer_idx}:")
+            logger.info(f"  - Attention heads: {layer_stats['attention']}")
+            logger.info(f"  - MLP paths: {layer_stats['mlp']}")
         
-        print("Validating parameter assignments...")
-        # Validate parameters (sampling-based approach for large graphs)
-        model_params = {name: param for name, param in self.model.named_parameters()
-                      if any(f"layers.{idx}" in name for idx in self.layer_range)}
-        
-        grouped_params = set().union(*[set(g.parameters.keys()) for g in self.groups])
-        ungrouped = set(model_params.keys()) - grouped_params
-        
-        if ungrouped:
-            logger.warning(f"Found {len(ungrouped)} ungrouped parameters in target layers")
-            
-            print("Validating parameter assignments...")
-            # Only consider parameters from the last 20% of layers
-            model_params = {name: param for name, param in self.model.named_parameters()
-                        if any(f"layers.{idx}" in name for idx in self.layer_range)}
-            grouped_params = set().union(*[set(g.parameters.keys()) for g in self.groups])
-            ungrouped = set(model_params.keys()) - grouped_params
-            if ungrouped:
-                logger.warning(f"Found {len(ungrouped)} ungrouped parameters in target layers")
-
+        logger.info(f"Total memory footprint: {total_memory:.2f} MB")
+    
     def visualize(self, output_path: str):
-        """Visualize dependency graph with non-interactive backend"""
-        print("Generating graph visualization...")
-        
-        # Set non-interactive backend before importing pyplot
+        """Visualize dependency graph with layer grouping"""
+        # Set non-interactive backend
         import matplotlib
-        matplotlib.use('Agg')  # Use Agg backend for non-interactive environments
+        matplotlib.use('Agg')  # Must be before importing pyplot
         import matplotlib.pyplot as plt
         
-        try:
-            # Create figure with specified size
-            plt.figure(figsize=(20, 20))
-            
-            print("Computing layout...")
-            # Use spring layout with optimized parameters for large graphs
-            pos = nx.spring_layout(self.graph, k=1.5, iterations=50)
-            
-            # Draw nodes with different colors for attention and MLP
-            print("Drawing nodes...")
-            node_colors = ['lightblue' if g.group_type == 'attention_head' else 'lightgreen'
-                          for g in self.groups]
-            
-            nx.draw_networkx_nodes(self.graph, pos,
-                                node_color=node_colors,
-                                node_size=500)
-            
-            print("Drawing edges...")
-            nx.draw_networkx_edges(self.graph, pos,
-                                edge_color='gray',
-                                arrows=True,
-                                alpha=0.5)
-            
-            print("Adding labels...")
-            # Use smaller subset of labels for large graphs
-            if len(self.groups) > 1000:
-                sample_size = min(1000, len(self.groups))
-                sampled_groups = random.sample(self.groups, sample_size)
-                labels = {g.id: f"{g.id}\n{g.memory_size:.1f}MB" for g in sampled_groups}
-            else:
-                labels = {g.id: f"{g.id}\n{g.memory_size:.1f}MB" for g in self.groups}
-                
-            nx.draw_networkx_labels(self.graph, pos, labels, font_size=8)
-            
-            # Add title and legend
-            plt.title("Parameter Group Dependencies (Last 20% of Layers)", fontsize=16, pad=20)
-            legend_elements = [plt.Line2D([0], [0], marker='o', color='w', 
-                                        markerfacecolor=c, label=l, markersize=10)
-                            for c, l in [('lightblue', 'Attention Head'),
-                                        ('lightgreen', 'MLP Channel')]]
-            plt.legend(handles=legend_elements, loc='upper right')
-            
-            print(f"Saving visualization to {output_path}...")
-            # Ensure the output directory exists
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save with high DPI but limit size for very large graphs
-            if len(self.groups) > 5000:
-                plt.savefig(output_path, dpi=150, bbox_inches='tight')
-            else:
-                plt.savefig(output_path, dpi=300, bbox_inches='tight')
-                
-            plt.close()  # Explicitly close the figure
-            logger.info(f"Saved dependency graph visualization to {output_path}")
-            
-        except Exception as e:
-            logger.error(f"Error generating visualization: {str(e)}")
-            plt.close()  # Ensure figure is closed even if there's an error
+        plt.figure(figsize=(20, 12))
         
+        # Create layout that groups nodes by layer
+        pos = {}
+        layers = sorted(set(g.layer_idx for g in self.groups))
+        
+        # Given the large number of nodes (32 attention heads + 8192 MLP paths per layer),
+        # let's modify the visualization to be more scalable
+        for i, layer_idx in enumerate(layers):
+            layer_groups = [g for g in self.groups if g.layer_idx == layer_idx]
+            attn_groups = [g for g in layer_groups if g.group_type == "attention_head"]
+            mlp_groups = [g for g in layer_groups if g.group_type == "mlp_path"]
+            
+            # Adjust spacing for better visibility
+            x_base = i * 4  # Increase horizontal spacing
+            
+            # Position attention heads
+            for j, group in enumerate(attn_groups):
+                pos[group.id] = (x_base, j * 2)  # Increase vertical spacing
+            
+            # Position MLP paths (use grid layout due to large number)
+            mlp_rows = 64  # Square grid for 8192 nodes
+            mlp_cols = 128
+            for j, group in enumerate(mlp_groups):
+                row = j // mlp_cols
+                col = j % mlp_cols
+                pos[group.id] = (x_base + 1 + col * 0.01, row * 0.01)  # Compact grid layout
+        
+        # Draw nodes with reduced size and simplified visuals
+        attn_nodes = [g.id for g in self.groups if g.group_type == "attention_head"]
+        mlp_nodes = [g.id for g in self.groups if g.group_type == "mlp_path"]
+        
+        # Draw attention heads larger for visibility
+        nx.draw_networkx_nodes(self.graph, pos, nodelist=attn_nodes,
+                              node_color='lightblue', node_size=100, 
+                              label='Attention Heads')
+        
+        # Draw MLP paths very small due to large number
+        nx.draw_networkx_nodes(self.graph, pos, nodelist=mlp_nodes,
+                              node_color='lightgreen', node_size=1, 
+                              label='MLP Paths')
+        
+        # Draw edges with high transparency due to density
+        nx.draw_networkx_edges(self.graph, pos, edge_color='gray', 
+                              arrows=False, alpha=0.1, width=0.1)
+        
+        # Only label attention heads to avoid cluttering
+        attn_labels = {g.id: g.id.split('_')[-1] for g in self.groups 
+                      if g.group_type == "attention_head"}
+        nx.draw_networkx_labels(self.graph, pos, attn_labels, font_size=6)
+        
+        # Add layer labels
+        for i, layer_idx in enumerate(layers):
+            plt.text(i * 4, -1, f'Layer {layer_idx}', 
+                    horizontalalignment='center', fontsize=10)
+        
+        plt.title("Layer Dependencies (Attention Heads → MLP Paths)\n"
+                  f"{len(attn_nodes)} attention heads, {len(mlp_nodes)} MLP paths")
+        plt.legend(loc='upper right')
+        
+        # Remove axes and set tight layout
+        plt.axis('off')
+        plt.tight_layout()
+        
+        # Save with high DPI but reasonable file size
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Saved dependency graph visualization to {output_path}")
     def save_graph(self, output_path: str):
         """Save graph and groups to file"""
-        print("Preparing graph data for saving...")
         save_data = {
-            'groups': [g.to_dict() for g in tqdm(self.groups, desc="Processing groups")],
+            'groups': [g.to_dict() for g in self.groups],
             'edges': list(self.graph.edges()),
             'param_to_group': self.param_to_group,
-            'config': self.config
+            'config': self.config,
         }
-        
-        print(f"Saving graph to {output_path}...")
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(save_data, output_path)
         logger.info(f"Saved dependency graph to {output_path}")
     
     @classmethod
-    def load_graph(cls, 
-                  model: nn.Module,
-                  load_path: str) -> Tuple['DependencyGraphBuilder', List[PruningGroup], nx.DiGraph]:
-        """Load graph and groups from file"""
-        print(f"Loading graph from {load_path}...")
+    def load_graph(cls, model: nn.Module, load_path: str) -> Tuple['DependencyGraphBuilder', List[PruningGroup], nx.DiGraph]:
+        """Load graph from file"""
+        logger.info(f"Loading graph from {load_path}...")
         load_path = Path(load_path)
         if not load_path.exists():
             raise FileNotFoundError(f"No saved graph found at {load_path}")
@@ -657,24 +373,19 @@ class DependencyGraphBuilder:
         save_data = torch.load(load_path)
         
         # Create instance
-        print("Creating graph builder instance...")
         instance = cls(model, save_data['config'])
         
         # Recreate groups
-        print("Recreating groups...")
-        instance.groups = []
-        for group_dict in tqdm(save_data['groups'], desc="Processing groups"):
-            # Get parameters for this group
+        logger.info("Recreating pruning groups...")
+        for group_dict in tqdm(save_data['groups'], desc="Loading groups"):
             parameters = {}
             for param_name, shape in group_dict['shapes'].items():
-                # Find parameter in model
                 param_path = param_name.split('.')
                 current = model
                 for comp in param_path:
                     current = getattr(current, comp)
                 parameters[param_name] = current
             
-            # Create group
             group = PruningGroup(
                 id=group_dict['id'],
                 layer_idx=group_dict['layer_idx'],
@@ -685,25 +396,24 @@ class DependencyGraphBuilder:
             )
             instance.groups.append(group)
         
-        print("Recreating graph structure...")
         # Recreate graph
+        logger.info("Recreating dependency graph...")
         instance.graph = nx.DiGraph()
         instance.graph.add_nodes_from([g.id for g in instance.groups])
         instance.graph.add_edges_from(save_data['edges'])
-        
-        # Restore parameter mapping
         instance.param_to_group = save_data['param_to_group']
         
-        logger.info(f"Loaded dependency graph with {len(instance.groups)} groups "
-                   f"and {instance.graph.number_of_edges()} dependencies")
+        logger.info(f"Loaded graph with {len(instance.groups)} groups and "
+                   f"{instance.graph.number_of_edges()} dependencies")
         
         return instance, instance.groups, instance.graph
     
     def get_prunable_groups(self) -> List[PruningGroup]:
         """Get groups that can be pruned without breaking dependencies"""
         prunable = []
-        for group in tqdm(self.groups, desc="Finding prunable groups"):
-            # Check if all dependencies are satisfied
+        for group in self.groups:
+            # A group is prunable if it has no dependencies
+            # or all its dependencies are already in param_to_group
             if not group.dependencies or all(dep in self.param_to_group 
                                           for dep in group.dependencies):
                 prunable.append(group)
@@ -718,72 +428,45 @@ class DependencyGraphBuilder:
     
     def get_dependent_groups(self, group: PruningGroup) -> List[PruningGroup]:
         """Get all groups that depend on the given group"""
-        print(f"Finding groups dependent on {group.id}...")
         dependent_ids = list(self.graph.successors(group.id))
-        return [self.get_group_by_id(gid) for gid in tqdm(dependent_ids, desc="Processing dependent groups")]
+        return [self.get_group_by_id(gid) for gid in dependent_ids]
     
     def get_dependency_groups(self, group: PruningGroup) -> List[PruningGroup]:
         """Get all groups that the given group depends on"""
-        print(f"Finding dependencies for {group.id}...")
         dependency_ids = list(self.graph.predecessors(group.id))
-        return [self.get_group_by_id(gid) for gid in tqdm(dependency_ids, desc="Processing dependency groups")]
+        return [self.get_group_by_id(gid) for gid in dependency_ids]
     
     def analyze_graph(self) -> Dict[str, Any]:
         """Analyze graph properties"""
-        print("Analyzing graph properties...")
         analysis = {
             'num_groups': len(self.groups),
             'num_edges': self.graph.number_of_edges(),
-            'num_attention_heads': len([g for g in tqdm(self.groups, desc="Counting attention heads") 
-                                     if g.group_type == 'attention_head']),
-            'num_mlp_channels': len([g for g in tqdm(self.groups, desc="Counting MLP channels") 
-                                   if g.group_type == 'mlp_channel']),
-            'avg_dependencies': np.mean([len(g.dependencies) for g in tqdm(self.groups, desc="Calculating dependencies")]),
+            'num_attention_heads': len([g for g in self.groups if g.group_type == 'attention_head']),
+            'num_mlp_paths': len([g for g in self.groups if g.group_type == 'mlp_path']),
+            'avg_dependencies': np.mean([len(g.dependencies) for g in self.groups]),
             'max_dependencies': max(len(g.dependencies) for g in self.groups),
             'isolated_groups': len(list(nx.isolates(self.graph))),
-            'strongly_connected_components': len(list(nx.strongly_connected_components(self.graph))),
-            'avg_path_length': nx.average_shortest_path_length(self.graph) 
-                             if nx.is_strongly_connected(self.graph) else None,
-            'diameter': nx.diameter(self.graph) 
-                       if nx.is_strongly_connected(self.graph) else None,
-            'density': nx.density(self.graph),
-            'layer_distribution': self._get_layer_distribution()
-        }
-        
-        return analysis
-    
-    def _get_layer_distribution(self) -> Dict[int, Dict[str, int]]:
-        """Get distribution of groups across layers"""
-        print("Analyzing layer distribution...")
-        distribution = {}
-        for group in tqdm(self.groups, desc="Processing groups"):
-            if group.layer_idx not in distribution:
-                distribution[group.layer_idx] = {
-                    'attention_heads': 0,
-                    'mlp_channels': 0
+            'layer_distribution': {
+                layer_idx: {
+                    'attention_heads': len([g for g in self.groups 
+                                         if g.layer_idx == layer_idx and g.group_type == 'attention_head']),
+                    'mlp_paths': len([g for g in self.groups 
+                                    if g.layer_idx == layer_idx and g.group_type == 'mlp_path'])
                 }
-            
-            if group.group_type == 'attention_head':
-                distribution[group.layer_idx]['attention_heads'] += 1
-            else:
-                distribution[group.layer_idx]['mlp_channels'] += 1
-        
-        return distribution
+                for layer_idx in self.target_layers
+            }
+        }
+        return analysis
     
     def get_memory_distribution(self) -> Dict[str, float]:
         """Get memory distribution across group types"""
-        print("Calculating memory distribution...")
         memory_dist = {
-            'attention_heads': sum(g.memory_size for g in tqdm(
-                [g for g in self.groups if g.group_type == 'attention_head'],
-                desc="Processing attention heads"
-            )),
-            'mlp_channels': sum(g.memory_size for g in tqdm(
-                [g for g in self.groups if g.group_type == 'mlp_channel'],
-                desc="Processing MLP channels"
-            ))
+            'attention_heads': sum(g.memory_size for g in self.groups 
+                                 if g.group_type == 'attention_head'),
+            'mlp_paths': sum(g.memory_size for g in self.groups 
+                            if g.group_type == 'mlp_path')
         }
-        memory_dist['total'] = memory_dist['attention_heads'] + memory_dist['mlp_channels']
+        memory_dist['total'] = memory_dist['attention_heads'] + memory_dist['mlp_paths']
         return memory_dist
     
     def __str__(self) -> str:
@@ -792,14 +475,15 @@ class DependencyGraphBuilder:
         memory_dist = self.get_memory_distribution()
         
         return (
-            f"Dependency Graph Summary (Last 20% of Layers):\n"
-            f"  - Layers: {min(self.layer_range)} to {max(self.layer_range)}\n"
+            f"Dependency Graph Summary:\n"
+            f"  - Target Layers: {min(self.target_layers)}-{max(self.target_layers)}\n"
             f"  - Total Groups: {analysis['num_groups']}\n"
             f"  - Attention Heads: {analysis['num_attention_heads']}\n"
-            f"  - MLP Channels: {analysis['num_mlp_channels']}\n"
-            f"  - Total Dependencies: {analysis['num_edges']}\n"
-            f"  - Average Dependencies: {analysis['avg_dependencies']:.2f}\n"
-            f"  - Total Memory: {memory_dist['total']:.2f} MB\n"
-            f"    - Attention Memory: {memory_dist['attention_heads']:.2f} MB\n"
-            f"    - MLP Memory: {memory_dist['mlp_channels']:.2f} MB"
+            f"  - MLP Paths: {analysis['num_mlp_paths']}\n"
+            f"  - Dependencies: {analysis['num_edges']}\n"
+            f"  - Avg Dependencies per Group: {analysis['avg_dependencies']:.2f}\n"
+            f"  - Memory Distribution:\n"
+            f"    - Total: {memory_dist['total']:.2f} MB\n"
+            f"    - Attention: {memory_dist['attention_heads']:.2f} MB\n"
+            f"    - MLP: {memory_dist['mlp_paths']:.2f} MB"
         )

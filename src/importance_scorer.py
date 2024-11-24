@@ -22,21 +22,12 @@ class ImportanceMetrics:
 
 class ImportanceScorer:
     def __init__(self,
-                 model: torch.nn.Module,
-                 tokenizer,
-                 config: Dict[str, Any],
-                 calibration_dataloader: torch.utils.data.DataLoader,
-                 device: Optional[str] = None):
-        """
-        Initialize importance scorer
-        
-        Args:
-            model: The model to analyze
-            tokenizer: Tokenizer for the model
-            config: Configuration dictionary containing scoring methods and weights
-            calibration_dataloader: DataLoader for calibration data
-            device: Device to use for computation
-        """
+             model: torch.nn.Module,
+             tokenizer,
+             config: Dict[str, Any],
+             calibration_dataloader: torch.utils.data.DataLoader,
+             device: Optional[str] = None):
+        """Initialize importance scorer"""
         self.model = model
         self.tokenizer = tokenizer
         self.config = config
@@ -44,17 +35,25 @@ class ImportanceScorer:
         self.dataloader = calibration_dataloader
         self.score_cache = {}
         
-        # Move model to device if needed
-        self.model = self.model.to(self.device)
+        # Set model to eval mode but enable gradients
+        self.model.eval()
+        # Enable gradients for all parameters
+        for param in self.model.parameters():
+            param.requires_grad = True
+            
+        # Enable gradient checkpointing for memory efficiency
+        if hasattr(self.model, 'gradient_checkpointing_enable'):
+            self.model.gradient_checkpointing_enable()
         
-        # Setup methods and weights
-        self.methods = config.get('methods', ['gradient', 'activation', 'fisher'])
-        self.weights = config.get('weights', [0.4, 0.3, 0.3])
+         #Get importance methods and weights from config
+        importance_config = config.get('pruning', {}).get('importance', {})
+        self.methods = importance_config.get('methods', ['gradient', 'activation', 'fisher'])
+        self.weights = importance_config.get('weights', [0.4, 0.3, 0.3])
         
-        # Validation
+        # Validate configuration
         self._validate_config()
         logger.info(f"Initialized ImportanceScorer with methods: {self.methods}")
-
+    
     def _validate_config(self):
         """Validate configuration parameters"""
         valid_methods = {'gradient', 'activation', 'fisher'}
@@ -155,29 +154,42 @@ class ImportanceScorer:
             importance = 0.0
             num_batches = 0
             
+            # Enable gradients for group parameters
+            for param in group.parameters.values():
+                if param is not None:
+                    param.requires_grad = True
+            
             for batch in self.dataloader:
-                if isinstance(batch, (tuple, list)):
-                    inputs = batch[0].to(self.device)
-                else:
-                    inputs = batch.to(self.device)
+                # Get input tensors and create labels
+                input_ids = batch['input_ids'].to(self.device)
+                attention_mask = batch['attention_mask'].to(self.device)
                 
-                # Forward pass with gradient computation
-                outputs = self.model(inputs)
-                loss = outputs.loss
-                loss.backward()
+                with torch.set_grad_enabled(True):
+                    # Forward pass with gradient computation
+                    outputs = self.model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=input_ids
+                    )
+                    
+                    loss = outputs.loss
+                    loss.backward()
+                    
+                    # Compute importance
+                    for param in group.parameters.values():
+                        if param.grad is not None:
+                            importance += torch.abs(param.grad * param).sum().item()
+                    
+                    self.model.zero_grad()
+                    num_batches += 1
+                    
+                    # Memory management
+                    del outputs, loss
+                    torch.cuda.empty_cache()
                 
-                # Compute importance
-                for param in group.parameters.values():
-                    if param.grad is not None:
-                        importance += torch.abs(param.grad * param).sum().item()
-                
-                self.model.zero_grad()
-                num_batches += 1
-                
-                # Move batch to CPU
-                inputs = inputs.cpu()
-                del outputs, loss
-                torch.cuda.empty_cache()
+                # Move tensors to CPU to free GPU memory
+                input_ids = input_ids.cpu()
+                attention_mask = attention_mask.cpu()
             
             return importance / max(num_batches, 1)
             

@@ -17,12 +17,12 @@ model:
 pruning:
   targets:
     min_accuracy: 0.90
-    memory_reduction: 0.5
-    latency_reduction: 0.3
+    memory_reduction: 0.1
+    latency_reduction: 0.1
   
   dependency:
     min_group_size: 64
-    include_skip_connections: true
+    include_skip_connections: false
     optimize_graph: true
     connection_threshold: 0.1
   
@@ -95,12 +95,12 @@ training:
 # System
 system:
   seed: 42
-  num_workers: 2              # Reduced from 4
+  num_workers: 0              # Reduced from 4
   pin_memory: true
   log_level: "INFO"
   save_dir: "experiments/results"
   checkpoint_dir: "experiments/results/checkpoints"
-  max_memory_usage: 22000     # Added (22GB max usage)
+  max_memory_usage: 38000     # Added (22GB max usage)
   memory_monitoring: true     # Added
   emergency_memory_recovery: true  # Added
 
