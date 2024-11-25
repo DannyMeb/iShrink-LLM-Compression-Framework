@@ -1,13 +1,16 @@
 # Model Configuration
 model:
   name: "meta-llama/Llama-3.2-1B-Instruct"
-  local_path: models/Llama-3.2-1B-Instruct" 
+  local_path: "models/Llama-3.2-1B-Instruct" 
   device: "cuda"
   precision: "float16"
-  batch_size: 8  # Reduced from 16 for initial loading
+  batch_size: 8
   max_seq_length: 512
   low_cpu_mem_usage: true
   gradient_checkpointing: true
+  hidden_size: 768
+  num_heads: 12
+  mlp_ratio: 4
   tokenizer_kwargs:
     padding: true
     truncation: true
@@ -17,31 +20,48 @@ model:
 pruning:
   targets:
     min_accuracy: 0.90
-    memory_reduction: 0.1
-    latency_reduction: 0.1
+    min_accuracy_ratio: 0.90  # Minimum acceptable accuracy compared to initial
+    max_pruned_heads: 100     # Maximum number of heads that can be pruned
+    compression_target: 0.5   # Target compression ratio
   
+  # Dependency configuration (for attention head identification)
   dependency:
-    min_group_size: 64
-    include_skip_connections: false
-    optimize_graph: true
-    connection_threshold: 0.1
+    hidden_size: 768
+    num_heads: 12
+    mlp_ratio: 4
   
+  # Importance scoring configuration
   importance:
-    methods: ["gradient", "activation", "fisher"]
-    weights: [0.4, 0.4, 0.2]
-    num_samples: 50  # Reduced from 100
-    batch_size: 8    # Reduced from 16
+    num_samples: 10
+    batch_size: 8
+    use_mixed_precision: true
+    memory_efficient: true
     gradient_accumulation: true
-    use_mixed_precision: true    # Added
-    memory_efficient: true       # Added
-    max_memory_usage: 20000     # Added (20GB max usage)
+
+  # Environment configuration
+  env:
+    max_steps: 1000
+    eval_frequency: 5        # How often to evaluate model
+    eval_batches: 10        # Number of batches for quick evaluation
+    clear_cache: true       # Clear CUDA cache after each step
+    
+    # Reward weights
+    reward_weights:
+      accuracy: 1.0         # Weight for accuracy maintenance
+      compression: 0.5      # Weight for compression achievement
+      importance: 0.3       # Weight for importance-based penalty
+    
+    # Early stopping
+    early_stopping:
+      patience: 10
+      min_delta: 0.01
 
 # RL Configuration
 rl:
   ppo:
     learning_rate: 3.0e-4
     n_epochs: 10
-    batch_size: 32              # Reduced from 64
+    batch_size: 32
     gamma: 0.99
     gae_lambda: 0.95
     clip_ratio: 0.2
@@ -49,14 +69,7 @@ rl:
     entropy_coef: 0.01
     max_grad_norm: 0.5
     hidden_dims: [256, 256]
-  
-  env:
-    max_steps: 1000
-    warmup_steps: 5
-    reward_weights:
-      accuracy: 0.6
-      memory: 0.2
-      latency: 0.2
+    update_interval: 5      # How often to update policy
 
 # Training Configuration
 training:
@@ -64,53 +77,84 @@ training:
     dataset: "wikitext"
     dataset_config: "wikitext-2-raw-v1"
     num_samples: 1000
-    batch_size: 8               # Reduced from 32
+    batch_size: 8
     max_seq_length: 512
-    eval_batch_size: 4          # Reduced from 8
+    eval_batch_size: 4
     prefetch_factor: 2
     eval_split: 0.1
-    num_workers: 2              # Reduced from 4
+    num_workers: 2
     shuffle: true
   
   optimization:
     num_episodes: 100
     checkpoint_freq: 10
-    gradient_accumulation_steps: 4  # Increased from 2 to compensate for smaller batch
+    gradient_accumulation_steps: 4
     mixed_precision: true
     max_gradient_norm: 1.0
     early_stopping:
       patience: 5
       min_delta: 0.01
-    memory_efficient_backprop: true  # Added
-    offload_optimizer: true          # Added
-    dynamic_batch_sizing: true       # Added
+    memory_efficient_backprop: true
+    offload_optimizer: true
+    dynamic_batch_sizing: true
   
   logging:
     log_freq: 1
     use_wandb: false
     project_name: "llm-pruning"
     metrics_dir: "experiments/results/metrics"
-    log_memory_usage: true    # Added
+    log_memory_usage: true
+    log_dependency_graph: true
+    log_importance_scores: true
 
-# System
+# Metrics Configuration
+metrics:
+  eval:
+    num_batches: 50        # Number of batches for full evaluation
+    compute_perplexity: true
+    measure_latency: true
+    measure_throughput: true
+    measure_memory: true
+  
+  thresholds:
+    min_accuracy: 0.90
+    max_perplexity: 10.0
+    max_latency_increase: 0.2  # Maximum 20% latency increase
+    max_memory_usage: 38000    # MB
+  
+  save:
+    dir: "experiments/results/metrics"
+    save_initial: true     # Save initial model metrics
+    save_frequency: 10     # Save metrics every N steps
+    format: "json"         # Format for saving metrics
+
+# System Configuration
 system:
   seed: 42
-  num_workers: 0              # Reduced from 4
+  num_workers: 0
   pin_memory: true
   log_level: "INFO"
   save_dir: "experiments/results"
   checkpoint_dir: "experiments/results/checkpoints"
-  max_memory_usage: 38000     # Added (22GB max usage)
-  memory_monitoring: true     # Added
-  emergency_memory_recovery: true  # Added
+  max_memory_usage: 38000
+  memory_monitoring: true
+  emergency_memory_recovery: true
 
-# Memory Management (New Section)
+# Memory Management
 memory:
-  gpu_memory_fraction: 0.9    # Use 90% of available GPU memory
-  cleanup_interval: 10        # Cleanup every 10 steps
-  batch_auto_scaling: true    # Automatically adjust batch size
-  min_free_memory: 2000      # Minimum 2GB free memory
+  gpu_memory_fraction: 0.9
+  cleanup_interval: 10
+  batch_auto_scaling: true
+  min_free_memory: 2000
   monitoring:
     enabled: true
     log_interval: 100
     alert_threshold: 0.95
+
+# Checkpointing
+checkpointing:
+  save_dir: "experiments/results/checkpoints"
+  save_frequency: 10           # Save every N episodes
+  keep_last_n: 5              # Keep only last N checkpoints
+  save_metrics: true          # Save metrics with checkpoints
+  save_importance_scores: true # Save importance scores with checkpoints
