@@ -1,6 +1,6 @@
-=== Experiment Start: Mon Nov 25 08:03:56 PM UTC 2024 ===
+=== Experiment Start: Mon Nov 25 08:11:47 PM UTC 2024 ===
 GPU Information:
-Mon Nov 25 20:03:56 2024       
+Mon Nov 25 20:11:47 2024       
 +---------------------------------------------------------------------------------------+
 | NVIDIA-SMI 535.104.05             Driver Version: 535.104.05   CUDA Version: 12.2     |
 |-----------------------------------------+----------------------+----------------------+
@@ -9,7 +9,7 @@ Mon Nov 25 20:03:56 2024
 |                                         |                      |               MIG M. |
 |=========================================+======================+======================|
 |   0  NVIDIA A100-SXM4-40GB          Off | 00000000:00:04.0 Off |                    0 |
-| N/A   31C    P0              46W / 400W |      2MiB / 40960MiB |      0%      Default |
+| N/A   30C    P0              46W / 400W |      2MiB / 40960MiB |      0%      Default |
 |                                         |                      |             Disabled |
 +-----------------------------------------+----------------------+----------------------+
                                                                                          
@@ -28,6 +28,7 @@ INFO:src.model_loader:Downloading model meta-llama/Llama-3.2-1B-Instruct...
 INFO:accelerate.utils.modeling:We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
 INFO:src.model_loader:Saving model to models/Llama-3.2-1B-Instruct
 INFO:src.model_loader:Model saved successfully
+Map:   0%|          | 0/4358 [00:00<?, ? examples/s]Map:  23%|██▎       | 1000/4358 [00:00<00:00, 3692.60 examples/s]Map:  46%|████▌     | 2000/4358 [00:00<00:00, 4436.21 examples/s]Map:  69%|██████▉   | 3000/4358 [00:00<00:00, 4687.95 examples/s]Map:  92%|█████████▏| 4000/4358 [00:00<00:00, 4927.22 examples/s]Map: 100%|██████████| 4358/4358 [00:00<00:00, 4664.70 examples/s]
 INFO:__main__:Evaluating initial model...
 INFO:__main__:Creating pruning units...
 INFO:src.dependency_graph:Initialized head-level pruning units builder
@@ -35,12 +36,27 @@ INFO:src.dependency_graph:Found 16 transformer layers
 INFO:src.dependency_graph:Processing last 20% of layers: 14 to 15
 INFO:src.dependency_graph:Created 24 head pruning units
 INFO:__main__:Loading existing importance scores from experiments/results/importance_scores/head_importance_scores.json
-ERROR:__main__:Pipeline failed: PruningPipeline._load_importance_scores() takes 2 positional arguments but 3 were given
+INFO:__main__:Successfully loaded importance scores for 24 units
+INFO:__main__:Setting up pruning environment...
+INFO:src.pruning_env:Initial model metrics: accuracy=-8.9125, perplexity=7424.5154
+INFO:src.pruning_env:Initialized PruningEnvironment with 24 prunable heads
+INFO:__main__:Setting up RL agent...
+INFO:src.rl_agent:Initialized PPO agent with state dim: 51, action dim: 24
+INFO:__main__:Starting RL training...
+ERROR:__main__:Pipeline failed: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu! (when checking argument for argument index in method wrapper_CUDA_gather)
 Traceback (most recent call last):
-  File "/content/LLM-Compression/run_pipeline.py", line 411, in <module>
+  File "/content/LLM-Compression/run_pipeline.py", line 406, in <module>
     main()
-  File "/content/LLM-Compression/run_pipeline.py", line 408, in main
+  File "/content/LLM-Compression/run_pipeline.py", line 403, in main
     pipeline.run()
-  File "/content/LLM-Compression/run_pipeline.py", line 100, in run
-    self._load_importance_scores(pruning_units, scores_path)
-TypeError: PruningPipeline._load_importance_scores() takes 2 positional arguments but 3 were given
+  File "/content/LLM-Compression/run_pipeline.py", line 128, in run
+    self._train_agent(env, agent)
+  File "/content/LLM-Compression/run_pipeline.py", line 298, in _train_agent
+    stats = agent.train_episode(env)
+  File "/content/LLM-Compression/src/rl_agent.py", line 166, in train_episode
+    action, action_log_prob, value = self.select_action(state)
+  File "/content/LLM-Compression/src/rl_agent.py", line 146, in select_action
+    action_log_prob = dist.log_prob(torch.tensor([action])).item()
+  File "/usr/local/envs/shrinker/lib/python3.10/site-packages/torch/distributions/categorical.py", line 143, in log_prob
+    return log_pmf.gather(-1, value).squeeze(-1)
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu! (when checking argument for argument index in method wrapper_CUDA_gather)
