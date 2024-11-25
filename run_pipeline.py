@@ -240,30 +240,25 @@ class PruningPipeline:
             logger.error(f"Error saving importance scores: {str(e)}")
             raise
     
-    def _load_importance_scores(self, groups) -> bool:
-        """Load pre-computed importance scores if they exist"""
-        scores_path = self.save_dir / 'importance_scores' / 'head_importance_scores.json'
-        
-        if scores_path.exists():
-            try:
-                logger.info("Found pre-computed importance scores")
-                with open(scores_path) as f:
-                    scores_data = json.load(f)
-                    
-                # Assign scores to groups
-                for group in groups:
-                    if group.id in scores_data:
-                        group.importance_score = scores_data[group.id]['importance_score']
-                        
-                logger.info("Successfully loaded importance scores")
-                return True
+    def _load_importance_scores(self, pruning_units: List[PruningUnit], scores_path: Path):
+        """Load pre-computed importance scores"""
+        try:
+            with open(scores_path) as f:
+                scores_data = json.load(f)
                 
-            except Exception as e:
-                logger.error(f"Error loading importance scores: {str(e)}")
-                return False
-        
-        logger.info("No pre-computed importance scores found")
-        return False
+            # Assign scores to pruning units
+            for unit in pruning_units:
+                if unit.id in scores_data:
+                    unit.importance_score = scores_data[unit.id]['importance_score']
+                else:
+                    logger.warning(f"No saved importance score for unit {unit.id}")
+                    unit.importance_score = 0.0  # Default score
+                    
+            logger.info(f"Successfully loaded importance scores for {len(pruning_units)} units")
+            
+        except Exception as e:
+            logger.error(f"Error loading importance scores: {str(e)}")
+            raise RuntimeError(f"Failed to load importance scores: {str(e)}")
 
 
     def _setup_environment(self, model, groups, eval_dataloader) -> PruningEnvironment:
