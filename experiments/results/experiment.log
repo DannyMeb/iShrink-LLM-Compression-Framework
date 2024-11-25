@@ -1,6 +1,6 @@
-=== Experiment Start: Sun Nov 24 09:41:34 PM UTC 2024 ===
+=== Experiment Start: Mon Nov 25 08:03:56 PM UTC 2024 ===
 GPU Information:
-Sun Nov 24 21:41:34 2024       
+Mon Nov 25 20:03:56 2024       
 +---------------------------------------------------------------------------------------+
 | NVIDIA-SMI 535.104.05             Driver Version: 535.104.05   CUDA Version: 12.2     |
 |-----------------------------------------+----------------------+----------------------+
@@ -9,7 +9,7 @@ Sun Nov 24 21:41:34 2024
 |                                         |                      |               MIG M. |
 |=========================================+======================+======================|
 |   0  NVIDIA A100-SXM4-40GB          Off | 00000000:00:04.0 Off |                    0 |
-| N/A   32C    P0              42W / 400W |      2MiB / 40960MiB |      0%      Default |
+| N/A   31C    P0              46W / 400W |      2MiB / 40960MiB |      0%      Default |
 |                                         |                      |             Disabled |
 +-----------------------------------------+----------------------+----------------------+
                                                                                          
@@ -26,62 +26,21 @@ INFO:__main__:Loading model and data...
 INFO:src.model_loader:Model not found locally. Downloading...
 INFO:src.model_loader:Downloading model meta-llama/Llama-3.2-1B-Instruct...
 INFO:accelerate.utils.modeling:We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
-INFO:src.model_loader:Saving model to models/Llama-3.2-1B-Instruct"
+INFO:src.model_loader:Saving model to models/Llama-3.2-1B-Instruct
 INFO:src.model_loader:Model saved successfully
-INFO:__main__:Building dependency graph...
-INFO:src.dependency_graph:Based on reduction targets (memory: 0.1, latency: 0.1):
-INFO:src.dependency_graph:Selected layers 14 to 15 for pruning
-INFO:src.dependency_graph:This represents 2/16 layers (12.5%)
-INFO:src.dependency_graph:Initializing DependencyGraphBuilder with 2 target layers
-INFO:src.dependency_graph:Building dependency graph...
-Building Graph:   0%|          | 0/3 [00:00<?, ?it/s]
-Creating attention groups:   0%|          | 0/2 [00:00<?, ?it/s][ACreating attention groups: 100%|██████████| 2/2 [00:00<00:00, 28.43it/s]
-
-Creating MLP groups:   0%|          | 0/2 [00:00<?, ?it/s][A
-Creating MLP groups:  50%|█████     | 1/2 [00:02<00:02,  2.87s/it][A
-Creating MLP groups: 100%|██████████| 2/2 [00:05<00:00,  2.78s/it][ACreating MLP groups: 100%|██████████| 2/2 [00:05<00:00,  2.79s/it]
-Building Graph:  67%|██████▋   | 2/3 [00:05<00:02,  2.83s/it]INFO:src.dependency_graph:Layer 14: Connected 32 attention heads to 8192 MLP paths
-INFO:src.dependency_graph:Layer 15: Connected 32 attention heads to 8192 MLP paths
-Building Graph: 100%|██████████| 3/3 [00:06<00:00,  1.97s/it]Building Graph: 100%|██████████| 3/3 [00:06<00:00,  2.14s/it]
-INFO:src.dependency_graph:Pruning Group Statistics:
-INFO:src.dependency_graph:Layer 14:
-INFO:src.dependency_graph:  - Attention heads: 32
-INFO:src.dependency_graph:  - MLP paths: 8192
-INFO:src.dependency_graph:Layer 15:
-INFO:src.dependency_graph:  - Attention heads: 32
-INFO:src.dependency_graph:  - MLP paths: 8192
-INFO:src.dependency_graph:Total memory footprint: 232.00 MB
-INFO:src.dependency_graph:Saved dependency graph visualization to experiments/results/dependency_graph.png
-INFO:__main__:Calculating importance scores...
-INFO:src.importance_scorer:Initialized ImportanceScorer with methods: ['gradient', 'activation', 'fisher']
-Calculating importance scores:   0%|          | 0/16448 [00:00<?, ?it/s]ERROR:src.importance_scorer:Error computing importance for group attn_l14_h0: you can only change requires_grad flags of leaf variables.
-Calculating importance scores:   0%|          | 0/16448 [00:00<?, ?it/s]
-ERROR:__main__:Pipeline failed: you can only change requires_grad flags of leaf variables.
+INFO:__main__:Evaluating initial model...
+INFO:__main__:Creating pruning units...
+INFO:src.dependency_graph:Initialized head-level pruning units builder
+INFO:src.dependency_graph:Found 16 transformer layers
+INFO:src.dependency_graph:Processing last 20% of layers: 14 to 15
+INFO:src.dependency_graph:Created 24 head pruning units
+INFO:__main__:Loading existing importance scores from experiments/results/importance_scores/head_importance_scores.json
+ERROR:__main__:Pipeline failed: PruningPipeline._load_importance_scores() takes 2 positional arguments but 3 were given
 Traceback (most recent call last):
-  File "/content/LLM-Compression/run_pipeline.py", line 81, in run
-    self._calculate_importance_scores(groups, scorer)
-  File "/content/LLM-Compression/run_pipeline.py", line 173, in _calculate_importance_scores
-    score = scorer.compute_group_importance(group)
-  File "/usr/local/envs/shrinker/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
-    return func(*args, **kwargs)
-  File "/content/LLM-Compression/src/importance_scorer.py", line 110, in compute_group_importance
-    value = methods_map[method](group)
-  File "/content/LLM-Compression/src/importance_scorer.py", line 160, in _compute_gradient_importance
-    param.requires_grad = True
-RuntimeError: you can only change requires_grad flags of leaf variables.
-Traceback (most recent call last):
-  File "/content/LLM-Compression/run_pipeline.py", line 318, in <module>
+  File "/content/LLM-Compression/run_pipeline.py", line 411, in <module>
     main()
-  File "/content/LLM-Compression/run_pipeline.py", line 315, in main
+  File "/content/LLM-Compression/run_pipeline.py", line 408, in main
     pipeline.run()
-  File "/content/LLM-Compression/run_pipeline.py", line 81, in run
-    self._calculate_importance_scores(groups, scorer)
-  File "/content/LLM-Compression/run_pipeline.py", line 173, in _calculate_importance_scores
-    score = scorer.compute_group_importance(group)
-  File "/usr/local/envs/shrinker/lib/python3.10/site-packages/torch/utils/_contextlib.py", line 116, in decorate_context
-    return func(*args, **kwargs)
-  File "/content/LLM-Compression/src/importance_scorer.py", line 110, in compute_group_importance
-    value = methods_map[method](group)
-  File "/content/LLM-Compression/src/importance_scorer.py", line 160, in _compute_gradient_importance
-    param.requires_grad = True
-RuntimeError: you can only change requires_grad flags of leaf variables.
+  File "/content/LLM-Compression/run_pipeline.py", line 100, in run
+    self._load_importance_scores(pruning_units, scores_path)
+TypeError: PruningPipeline._load_importance_scores() takes 2 positional arguments but 3 were given

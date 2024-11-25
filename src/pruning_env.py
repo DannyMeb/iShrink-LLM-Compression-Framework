@@ -1,149 +1,132 @@
+# src/pruning_env.py
+
 import gym
 from gym import spaces
 import torch
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
-from .utils import setup_device, create_dataloader, calculate_model_size
-from .dependency_graph import PruningGroup
-from .metrics import MetricsTracker
+from .metrics import MetricsTracker, ModelMetrics
 
 logger = logging.getLogger(__name__)
 
 @dataclass
 class PruningState:
-    """Track the state of the pruning process"""
+    """Tracks the state of pruning process"""
     current_step: int = 0
     total_pruned: int = 0
-    pruned_groups: List[str] = field(default_factory=list)
-    original_size: Optional[float] = None
-    current_size: Optional[float] = None
-    accuracy: Optional[float] = None
-    latency: Optional[float] = None
+    pruned_groups: List[str] = None  # IDs of pruned heads
+    initial_metrics: Optional[ModelMetrics] = None
+    current_metrics: Optional[ModelMetrics] = None
     
-    def compression_ratio(self) -> float:
-        """Calculate current compression ratio"""
-        if self.original_size and self.current_size:
-            return self.current_size / self.original_size
-        return 1.0
+    def __post_init__(self):
+        if self.pruned_groups is None:
+            self.pruned_groups = []
 
 class PruningEnvironment(gym.Env):
+    """Environment for learning to prune transformer heads"""
+    
     def __init__(self,
                  model: torch.nn.Module,
-                 groups: List[PruningGroup],
+                 pruning_units: List['PruningUnit'],
                  eval_dataloader: torch.utils.data.DataLoader,
-                 config: Dict[str, Any],
                  metrics_tracker: MetricsTracker,
-                 device: Optional[str] = None):
-        """
-        Initialize pruning environment
-        """
+                 config: Dict[str, Any],
+                 device: torch.device):
+        """Initialize pruning environment"""
         super().__init__()
+        
         self.model = model
-        self.groups = groups
+        self.pruning_units = pruning_units
         self.eval_dataloader = eval_dataloader
-        self.config = config
         self.metrics_tracker = metrics_tracker
-        self.device = setup_device(device)
+        self.config = config
+        self.device = device
         
-        # Initialize state
-        self.state = PruningState()
-        self._initialize_state()
+        # Setup action and observation spaces
+        self.action_space = spaces.Discrete(len(pruning_units))  # Choose which head to prune
         
-        # Setup spaces
-        self._setup_spaces()
-        
-        # Save original model state
-        self.original_state = self.model.state_dict()
-        
-        logger.info(f"Initialized PruningEnvironment with {len(groups)} groups")
-    
-    def _initialize_state(self):
-        """Initialize environment state"""
-        num_params, memory_size = calculate_model_size(self.model)
-        self.state.original_size = memory_size
-        self.state.current_size = memory_size
-        
-        # Initial evaluation
-        metrics = self.metrics_tracker.measure_pruning_metrics(
-            self.model,
-            self.eval_dataloader,
-            [],
-            0
-        )
-        self.state.accuracy = metrics.accuracy.accuracy
-        self.state.latency = metrics.latency.avg_latency
-    
-    def _setup_spaces(self):
-        """Setup action and observation spaces"""
-        # Action space: which group to prune
-        self.action_space = spaces.Discrete(len(self.groups))
-        
-        # Observation space
-        group_features = 6  # importance, pruned, deps count, size, deps_pruned_ratio, neighbor_importance
-        global_features = 5  # accuracy, latency, memory ratios, steps_remaining, total_pruned
-        state_dim = len(self.groups) * group_features + global_features
-        
+        # State space: [importance_scores, pruning_status, global_metrics]
+        state_dim = len(pruning_units) * 2 + 3  # 2 features per head + 3 global metrics
         self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
+            low=-np.inf, 
+            high=np.inf, 
             shape=(state_dim,),
             dtype=np.float32
         )
+        
+        # Initialize state
+        self.state = PruningState()
+        
+        # Evaluate and store initial metrics
+        initial_metrics = self.metrics_tracker.evaluate_model(
+            self.model,
+            self.eval_dataloader
+        )
+        self.state.initial_metrics = initial_metrics
+        self.state.current_metrics = initial_metrics
+        
+        # Save original model state
+        self.original_state = {
+            k: v.clone() for k, v in self.model.state_dict().items()
+        }
+        
+        logger.info(f"Initial model metrics: accuracy={initial_metrics.accuracy:.4f}, "
+                   f"perplexity={initial_metrics.perplexity:.4f}")
+        logger.info(f"Initialized PruningEnvironment with {len(pruning_units)} prunable heads")
     
-    def reset(self) -> np.ndarray:
+    def reset(self):
         """Reset environment to initial state"""
-        # Restore model
+        # Restore original model
         self.model.load_state_dict(self.original_state)
         
         # Reset state
         self.state = PruningState()
-        self._initialize_state()
+        
+        # Reset metrics to initial values
+        self.state.initial_metrics = self.metrics_tracker.evaluate_model(
+            self.model,
+            self.eval_dataloader
+        )
+        self.state.current_metrics = self.state.initial_metrics
         
         return self._get_state()
     
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
+    def step(self, action: int) -> Tuple[np.ndarray, float, bool, Dict]:
         """Execute pruning action"""
         # Validate action
         if not self._is_valid_action(action):
             return self._get_state(), -1.0, True, {'invalid_action': True}
         
-        # Get group to prune
-        group = self.groups[action]
-        
         try:
-            # Prune group
-            self._prune_group(group)
-            self.state.pruned_groups.append(group.id)
+            # Get pruning unit to prune
+            unit = self.pruning_units[action]
+            
+            # Prune head
+            self._prune_head(unit)
+            self.state.pruned_groups.append(unit.id)
             self.state.total_pruned += 1
             self.state.current_step += 1
             
-            # Measure metrics
-            metrics = self.metrics_tracker.measure_pruning_metrics(
+            # Evaluate new model state
+            self.state.current_metrics = self.metrics_tracker.evaluate_model(
                 self.model,
-                self.eval_dataloader,
-                self.state.pruned_groups,
-                self.state.current_step
+                self.eval_dataloader
             )
             
-            # Update state
-            self.state.accuracy = metrics.accuracy.accuracy
-            self.state.latency = metrics.latency.avg_latency
-            self.state.current_size = metrics.model_size.total_memory
-            
             # Calculate reward
-            reward = self._calculate_reward(metrics)
+            reward = self._calculate_reward()
             
             # Check if done
-            done = self._is_done(metrics)
+            done = self._is_done()
             
             # Prepare info dict
             info = {
-                'metrics': metrics,
-                'pruned_group': group.id,
-                'compression_ratio': self.state.compression_ratio(),
-                'accuracy_drop': self.state.accuracy - metrics.accuracy.accuracy
+                'pruned_head': unit.id,
+                'accuracy': self.state.current_metrics.accuracy,
+                'perplexity': self.state.current_metrics.perplexity,
+                'compression_ratio': len(self.state.pruned_groups) / len(self.pruning_units)
             }
             
             return self._get_state(), reward, done, info
@@ -156,92 +139,96 @@ class PruningEnvironment(gym.Env):
         """Get current state representation"""
         state = []
         
-        # Group features
-        for group in self.groups:
-            pruned = 1.0 if group.id in self.state.pruned_groups else 0.0
-            deps_pruned = sum(1 for dep in group.dependencies 
-                            if dep in self.state.pruned_groups)
-            deps_pruned_ratio = deps_pruned / len(group.dependencies) if group.dependencies else 1.0
-            
-            neighbor_importance = np.mean([
-                g.importance_score for g in self.groups
-                if g.id in group.dependencies or group.id in g.dependencies
-            ]) if group.dependencies else 0.0
-            
+        # Features for each head
+        for unit in self.pruning_units:
             state.extend([
-                group.importance_score,
-                pruned,
-                len(group.dependencies),
-                group.memory_size,
-                deps_pruned_ratio,
-                neighbor_importance
+                unit.importance_score,  # Importance of head
+                1.0 if unit.id in self.state.pruned_groups else 0.0  # Whether head is pruned
             ])
         
-        # Global features
-        steps_remaining = (self.config['max_steps'] - self.state.current_step) / self.config['max_steps']
+        # Global metrics
+        accuracy_ratio = (self.state.current_metrics.accuracy / 
+                         self.state.initial_metrics.accuracy)
+        compression_ratio = len(self.state.pruned_groups) / len(self.pruning_units)
+        progress = self.state.current_step / self.config['max_steps']
         
         state.extend([
-            self.state.accuracy,
-            self.state.latency,
-            self.state.compression_ratio(),
-            steps_remaining,
-            self.state.total_pruned / len(self.groups)
+            accuracy_ratio,
+            compression_ratio,
+            progress
         ])
         
         return np.array(state, dtype=np.float32)
     
     def _is_valid_action(self, action: int) -> bool:
         """Check if action is valid"""
-        if action >= len(self.groups):
+        if action >= len(self.pruning_units):
             return False
             
-        group = self.groups[action]
-        if group.id in self.state.pruned_groups:
-            return False
-            
-        # Check dependencies
-        return all(dep not in group.dependencies or dep in self.state.pruned_groups 
-                  for dep in group.dependencies)
+        # Can't prune already pruned head
+        unit = self.pruning_units[action]
+        return unit.id not in self.state.pruned_groups
     
-    def _prune_group(self, group: PruningGroup):
-        """Prune parameter group"""
+    def _prune_head(self, unit: 'PruningUnit'):
+        """Prune attention head by zeroing its parameters"""
         with torch.no_grad():
-            for param in group.parameters.values():
+            for param in unit.parameters.values():
                 param.zero_()
     
-    def _calculate_reward(self, metrics) -> float:
-        """Calculate reward based on metrics"""
-        weights = self.config['reward_weights']
+    def _calculate_reward(self) -> float:
+        """Calculate reward based on pruning results"""
+        # Get metrics
+        accuracy_ratio = (self.state.current_metrics.accuracy / 
+                         self.state.initial_metrics.accuracy)
+        compression_ratio = len(self.state.pruned_groups) / len(self.pruning_units)
         
-        # Calculate components
-        accuracy_reward = max(0, self.state.accuracy - self.config['min_accuracy'])
-        memory_reward = max(0, 1 - self.state.compression_ratio())
-        latency_reward = max(0, 1 - (metrics.latency.avg_latency / metrics.latency.p90_latency))
+        # Get recently pruned unit
+        last_pruned_id = self.state.pruned_groups[-1]
+        last_pruned = next(unit for unit in self.pruning_units if unit.id == last_pruned_id)
+        importance_penalty = last_pruned.importance_score
         
-        # Combine rewards
-        reward = (weights['accuracy'] * accuracy_reward +
-                 weights['memory'] * memory_reward +
-                 weights['latency'] * latency_reward)
+        # Calculate reward components
+        accuracy_reward = max(0, accuracy_ratio - self.config['min_accuracy_ratio'])
+        compression_reward = compression_ratio
+        importance_reward = -importance_penalty  # Penalty for pruning important heads
         
-        # Apply penalties
-        if self.state.accuracy < self.config['min_accuracy']:
+        # Combine rewards using weights from config
+        reward = (
+            self.config['reward_weights']['accuracy'] * accuracy_reward +
+            self.config['reward_weights']['compression'] * compression_reward +
+            self.config['reward_weights']['importance'] * importance_reward
+        )
+        
+        # Add penalties for constraint violations
+        if accuracy_ratio < self.config['min_accuracy_ratio']:
             reward -= 1.0
         
         return reward
     
-    def _is_done(self, metrics) -> bool:
+    def _is_done(self) -> bool:
         """Check if pruning should stop"""
-        return (self.state.accuracy < self.config['min_accuracy'] or
-                self.state.compression_ratio() <= self.config['target_memory'] or
-                self.state.current_step >= self.config['max_steps'])
+        # Current metrics
+        accuracy_ratio = (self.state.current_metrics.accuracy / 
+                         self.state.initial_metrics.accuracy)
+        compression_ratio = len(self.state.pruned_groups) / len(self.pruning_units)
+        
+        # Check terminal conditions
+        return (
+            accuracy_ratio < self.config['min_accuracy_ratio'] or
+            compression_ratio >= self.config['target_compression'] or
+            self.state.current_step >= self.config['max_steps'] or
+            len(self.state.pruned_groups) >= len(self.pruning_units)
+        )
     
     def get_pruning_summary(self) -> Dict[str, Any]:
-        """Get summary of pruning process"""
+        """Get summary of current pruning state"""
         return {
-            'pruned_groups': self.state.pruned_groups,
-            'compression_ratio': self.state.compression_ratio(),
-            'final_accuracy': self.state.accuracy,
-            'final_latency': self.state.latency,
-            'total_steps': self.state.current_step,
-            'total_pruned': self.state.total_pruned
+            'pruned_heads': len(self.state.pruned_groups),
+            'total_heads': len(self.pruning_units),
+            'compression_ratio': len(self.state.pruned_groups) / len(self.pruning_units),
+            'accuracy': self.state.current_metrics.accuracy,
+            'accuracy_ratio': (self.state.current_metrics.accuracy / 
+                             self.state.initial_metrics.accuracy),
+            'perplexity': self.state.current_metrics.perplexity,
+            'steps': self.state.current_step
         }

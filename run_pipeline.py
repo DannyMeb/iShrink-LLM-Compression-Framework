@@ -1,6 +1,8 @@
 import os
+import json
 import torch
 import yaml
+import numpy as np
 import logging
 import argparse
 from pathlib import Path
@@ -8,12 +10,13 @@ from typing import Dict, Any, Tuple, List, Optional
 import wandb
 from datasets import load_dataset
 from tqdm import tqdm
+
 import networkx as nx
 from torch.utils.data import DataLoader, Dataset
 
 # Import our components
 from src.model_loader import ModelLoader
-from src.dependency_graph import DependencyGraphBuilder
+from src.dependency_graph import DependencyGraphBuilder, PruningUnit
 from src.importance_scorer import ImportanceScorer
 from src.pruning_env import PruningEnvironment
 from src.rl_agent import PPOAgent
@@ -63,6 +66,12 @@ class PruningPipeline:
         for section in required_sections:
             if section not in config:
                 raise ValueError(f"Missing required config section: {section}")
+                
+        # Add validation for pruning config
+        required_pruning_configs = ['dependency', 'importance']
+        for config_type in required_pruning_configs:
+            if config_type not in config['pruning']:
+                raise ValueError(f"Missing required pruning config: {config_type}")
     
     def run(self):
         """Execute the complete pruning pipeline"""
@@ -71,36 +80,61 @@ class PruningPipeline:
             logger.info("Loading model and data...")
             model, tokenizer, eval_dataloader = self._setup_model_and_data()
             
-            # 2. Build Dependency Graph
-            logger.info("Building dependency graph...")
-            groups, graph = self._build_dependency_graph(model)
+            # 2. Initial Model Evaluation
+            logger.info("Evaluating initial model...")
+            metrics_tracker = MetricsTracker(
+                save_dir=self.save_dir,
+                device=self.device,
+                use_wandb=self.config['training']['logging']['use_wandb']
+            )
+            initial_metrics = metrics_tracker.evaluate_model(model, eval_dataloader)
             
-            # 3. Calculate Importance Scores
-            logger.info("Calculating importance scores...")
-            scorer = self._setup_importance_scorer(model, tokenizer, eval_dataloader)
-            self._calculate_importance_scores(groups, scorer)
+            # 3. Build Pruning Units (Attention Heads)
+            logger.info("Creating pruning units...")
+            pruning_units = self._create_pruning_units(model)
             
-            # 4. Setup Environment and Agent
-            logger.info("Setting up pruning environment and RL agent...")
-            env = self._setup_environment(model, groups, eval_dataloader)
-            agent = self._setup_agent(env)
+            # 4. Calculate or Load Importance Scores
+            scores_path = self.save_dir / 'importance_scores' / 'head_importance_scores.json'
+            if scores_path.exists():
+                logger.info(f"Loading existing importance scores from {scores_path}")
+                self._load_importance_scores(pruning_units, scores_path)
+            else:
+                logger.info("Calculating importance scores...")
+                scorer = self._setup_importance_scorer(model, tokenizer, eval_dataloader)
+                self._calculate_importance_scores(pruning_units, scorer)
             
-            # 5. Train Agent
-            logger.info("Starting training...")
+            # 5. Setup Environment with Initial Metrics
+            logger.info("Setting up pruning environment...")
+            env = PruningEnvironment(
+                model=model,
+                pruning_units=pruning_units,
+                eval_dataloader=eval_dataloader,
+                metrics_tracker=metrics_tracker,
+                config=self.config['pruning']['env'],
+                device=self.device
+            )
+            
+            # 6. Setup RL Agent
+            logger.info("Setting up RL agent...")
+            agent = PPOAgent(
+                state_dim=env.observation_space.shape[0],
+                action_dim=env.action_space.n,
+                config=self.config['rl']['ppo'],
+                device=self.device
+            )
+            
+            # 7. Train Agent
+            logger.info("Starting RL training...")
             self._train_agent(env, agent)
             
-            # 6. Final Evaluation
-            logger.info("Performing final evaluation...")
-            best_model = self._final_evaluation(env, agent)
-            
-            # 7. Save Results
+            # 8. Save Final Results
             logger.info("Saving results...")
-            self._save_results(best_model)
+            self._save_results(model, env, agent)
             
             logger.info("Pruning pipeline completed successfully!")
             
         except Exception as e:
-            logger.error(f"Pipeline failed: {str(e)}", exc_info=True)
+            logger.error(f"Pipeline failed: {str(e)}")
             raise
     
     def _setup_model_and_data(self) -> Tuple[torch.nn.Module, Any, DataLoader]:
@@ -143,19 +177,14 @@ class PruningPipeline:
         
         return eval_dataloader
     
-    def _build_dependency_graph(self, model) -> Tuple[List, nx.DiGraph]:
-        """Build dependency graph"""
+    def _create_pruning_units(self, model) -> List[PruningUnit]:
+        """Create pruning units for attention heads"""
         graph_builder = DependencyGraphBuilder(
             model=model,
             config=self.config['pruning']['dependency']
         )
-        
-        groups, graph = graph_builder.build()
-        
-        # Save graph visualization
-        graph_builder.visualize(self.save_dir / 'dependency_graph.png')
-        
-        return groups, graph
+        pruning_units, _ = graph_builder.build()  # We only need the units, not the graph
+        return pruning_units
     
     def _setup_importance_scorer(self, model, tokenizer, eval_dataloader) -> ImportanceScorer:
         """Setup importance scorer"""
@@ -167,12 +196,76 @@ class PruningPipeline:
             device=self.device
         )
     
+    # def _calculate_importance_scores(self, groups, scorer):
+    #     """Calculate importance scores for all groups"""
+    #     for group in tqdm(groups, desc="Calculating importance scores"):
+    #         group.importance_score = scorer.compute_importance(group)
+
     def _calculate_importance_scores(self, groups, scorer):
-        """Calculate importance scores for all groups"""
-        for group in tqdm(groups, desc="Calculating importance scores"):
-            score = scorer.compute_group_importance(group)
-            group.importance_score = score.combined_score
+        """Calculate importance scores for all groups and save them"""
+        # Create directory for importance scores
+        scores_dir = self.save_dir / 'importance_scores'
+        scores_dir.mkdir(exist_ok=True)
+
+        try:
+            # Calculate scores
+            for group in tqdm(groups, desc="Calculating importance scores"):
+                group.importance_score = scorer.compute_importance(group)
+
+            # Prepare data for saving
+            scores_data = {
+                group.id: {
+                    'importance_score': float(group.importance_score),  # Convert to float for JSON
+                    'layer_idx': group.layer_idx,
+                    'head_idx': group.head_idx,
+                    'metadata': {
+                        'parameters': list(group.parameters.keys())  # Save parameter names
+                    }
+                }
+                for group in groups
+            }
+
+            # Save as JSON for readability and easy loading
+            json_path = scores_dir / 'head_importance_scores.json'
+            with open(json_path, 'w') as f:
+                json.dump(scores_data, f, indent=2)
+
+            # Also save as numpy array for numerical operations
+            scores_array = np.array([group.importance_score for group in groups])
+            np.save(scores_dir / 'importance_scores.npy', scores_array)
+
+            logger.info(f"Saved importance scores for {len(groups)} heads to {scores_dir}")
+
+        except Exception as e:
+            logger.error(f"Error saving importance scores: {str(e)}")
+            raise
     
+    def _load_importance_scores(self, groups) -> bool:
+        """Load pre-computed importance scores if they exist"""
+        scores_path = self.save_dir / 'importance_scores' / 'head_importance_scores.json'
+        
+        if scores_path.exists():
+            try:
+                logger.info("Found pre-computed importance scores")
+                with open(scores_path) as f:
+                    scores_data = json.load(f)
+                    
+                # Assign scores to groups
+                for group in groups:
+                    if group.id in scores_data:
+                        group.importance_score = scores_data[group.id]['importance_score']
+                        
+                logger.info("Successfully loaded importance scores")
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error loading importance scores: {str(e)}")
+                return False
+        
+        logger.info("No pre-computed importance scores found")
+        return False
+
+
     def _setup_environment(self, model, groups, eval_dataloader) -> PruningEnvironment:
         """Setup pruning environment"""
         env = PruningEnvironment(

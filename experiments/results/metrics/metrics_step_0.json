@@ -1,0 +1,9 @@
+{
+  "step": 0,
+  "num_pruned": 0,
+  "accuracy": -9.31796875,
+  "latency": 0.07573604583740234,
+  "model_size": 1235814400,
+  "memory_usage": 8113649152,
+  "compression_ratio": 1.0
+}
