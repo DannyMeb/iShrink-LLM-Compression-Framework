@@ -76,10 +76,6 @@ rl:
 training:
   data:
     dataset: "cais/mmlu"  # Updated to MMLU
-<<<<<<< HEAD
-    dataset_config: "all"
-=======
->>>>>>> origin/main
     split: "validation"   # Using validation split for evaluation
     batch_size: 8
     max_seq_length: 512

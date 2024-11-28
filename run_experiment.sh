@@ -85,7 +85,7 @@ conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 # echo "Installing other requirements..."
 # pip install -r requirements.txt || error_exit "Failed to install requirements"
 
-<<<<<<< HEAD
+
 # Clone and set up lm-evaluation-harness
 # print_warning "Cloning lm-evaluation-harness repository..."
 # if [ -d "lm-evaluation-harness" ]; then
@@ -97,16 +97,7 @@ conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 #     cd lm-evaluation-harness || error_exit "Failed to enter lm-evaluation-harness directory"
 # fi
 
-# echo "Installing lm-evaluation-harness..."
-# pip install -e . || error_exit "Failed to install lm-evaluation-harness"
-# cd ..
-=======
-# Get HuggingFace token
-# echo -n "Please enter your HuggingFace token: "
-# read -r token
-# if [ -z "$token" ]; then
-#     error_exit "HuggingFace token is required"
-# fi
+
 export HF_TOKEN=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
 
 

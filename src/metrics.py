@@ -81,7 +81,12 @@ class MetricsTracker:
         except Exception as e:
             logger.error(f"Error during model evaluation: {str(e)}")
             raise
-     # def _measure_accuracy(self, model: torch.nn.Module) -> float:
+     
+
+
+
+
+    # def _measure_accuracy(self, model: torch.nn.Module) -> float:
     #     """
     #     Measure model accuracy using lm_eval framework for MMLU benchmark.
     #     Uses the locally saved model from ModelLoader.
@@ -144,10 +149,6 @@ class MetricsTracker:
     #         if hasattr(e, 'stderr'):
     #             logger.error(f"Stderr: {e.stderr}")
     #         raise
-
-
-
-
     
     def _measure_accuracy(self, model: torch.nn.Module, tokenizer) -> float:
         """
@@ -175,6 +176,8 @@ class MetricsTracker:
                 model=hf_model,
                 tasks=["mmlu"],
                 num_fewshot=5,
+                limit=0.1,
+                bootstrap_iters=1000,
                 device=str(self.device)
             )
 
