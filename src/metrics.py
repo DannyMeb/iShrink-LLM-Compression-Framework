@@ -1,5 +1,3 @@
-# src/metrics.py
-
 import torch
 import time
 import json
@@ -8,7 +6,7 @@ from dataclasses import dataclass
 import logging
 import psutil
 from pathlib import Path
-import math
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +14,6 @@ logger = logging.getLogger(__name__)
 class ModelMetrics:
     """Stores comprehensive model metrics"""
     accuracy: float
-    perplexity: float
     latency: float  # ms
     throughput: float  # samples/second
     memory_footprint: Dict[str, float]  # Memory stats in MB
@@ -39,8 +36,8 @@ class MetricsTracker:
                       ) -> ModelMetrics:
         """Comprehensive model evaluation"""
         try:
-            # 1. Measure accuracy and perplexity
-            accuracy, perplexity = self._measure_accuracy_and_perplexity(model, eval_dataloader)
+            # 1. Measure accuracy
+            accuracy = self._measure_accuracy(model, eval_dataloader)
             
             # 2. Measure latency and throughput
             latency, throughput = self._measure_performance(model, eval_dataloader)
@@ -53,7 +50,6 @@ class MetricsTracker:
             
             metrics = ModelMetrics(
                 accuracy=accuracy,
-                perplexity=perplexity,
                 latency=latency,
                 throughput=throughput,
                 memory_footprint=memory_stats,
@@ -66,37 +62,32 @@ class MetricsTracker:
             logger.error(f"Error during model evaluation: {str(e)}")
             raise
 
-    def _measure_accuracy_and_perplexity(self, 
-                                       model: torch.nn.Module,
-                                       dataloader: torch.utils.data.DataLoader) -> tuple[float, float]:
-        """Measure model accuracy and perplexity"""
+    def _measure_accuracy(self, 
+                         model: torch.nn.Module,
+                         dataloader: torch.utils.data.DataLoader) -> float:
+        """Measure model accuracy on MMLU"""
         model.eval()
-        total_loss = 0
-        total_tokens = 0
+        correct = 0
+        total = 0
         
         with torch.no_grad():
             for batch in dataloader:
+                # Move batch to device
                 batch = {k: v.to(self.device) for k, v in batch.items()}
+                
+                # Forward pass
                 outputs = model(**batch)
                 logits = outputs.logits
                 
-                # Prepare labels for language modeling
-                labels = batch['input_ids'].clone()
-                labels = labels[:, 1:].contiguous()
-                logits = logits[:, :-1, :].contiguous()
+                # Get predictions
+                predictions = torch.argmax(logits, dim=-1)
                 
-                # Compute loss
-                loss_fct = torch.nn.CrossEntropyLoss(reduction='sum')
-                loss = loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-                
-                total_loss += loss.item()
-                total_tokens += labels.numel()
+                # Calculate accuracy
+                correct += (predictions == batch['labels']).sum().item()
+                total += batch['labels'].size(0)
         
-        avg_loss = total_loss / total_tokens
-        perplexity = math.exp(avg_loss)
-        accuracy = -avg_loss  # Negative loss as accuracy
-        
-        return accuracy, perplexity
+        accuracy = correct / total
+        return accuracy
 
     def _measure_performance(self, 
                            model: torch.nn.Module,
@@ -136,23 +127,22 @@ class MetricsTracker:
         }
         return memory_stats
 
-    def save_initial_metrics(self, metrics: ModelMetrics):
-        """Save initial model metrics"""
+    def save_metrics(self, metrics: ModelMetrics, filename: str):
+        """Save metrics to file"""
         metrics_dict = {
             'accuracy': metrics.accuracy,
-            'perplexity': metrics.perplexity,
             'latency_ms': metrics.latency,
             'throughput_samples_per_sec': metrics.throughput,
             'memory_footprint_mb': metrics.memory_footprint,
             'parameter_count': metrics.parameter_count
         }
         
-        save_path = self.metrics_dir / 'initial_metrics.json'
+        save_path = self.metrics_dir / filename
         with open(save_path, 'w') as f:
             json.dump(metrics_dict, f, indent=2)
             
-        logger.info(f"Saved initial metrics to {save_path}")
+        logger.info(f"Saved metrics to {save_path}")
         
         if self.use_wandb:
             import wandb
-            wandb.log({'initial_metrics': metrics_dict})
+            wandb.log(metrics_dict)

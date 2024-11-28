@@ -19,12 +19,12 @@ model:
 # Pruning Configuration
 pruning:
   targets:
-    min_accuracy: 0.90
-    min_accuracy_ratio: 0.90  # Minimum acceptable accuracy compared to initial
-    max_pruned_heads: 100     # Maximum number of heads that can be pruned
-    compression_target: 0.5   # Target compression ratio
+    min_accuracy: 0.44  # 90% of baseline 49.3% MMLU accuracy
+    min_accuracy_ratio: 0.90
+    max_pruned_heads: 100
+    compression_target: 0.5
   
-  # Dependency configuration (for attention head identification)
+  # Dependency configuration
   dependency:
     hidden_size: 768
     num_heads: 12
@@ -32,7 +32,7 @@ pruning:
   
   # Importance scoring configuration
   importance:
-    num_samples: 10
+    num_samples: 100  # Increased for MMLU
     batch_size: 8
     use_mixed_precision: true
     memory_efficient: true
@@ -41,15 +41,16 @@ pruning:
   # Environment configuration
   env:
     max_steps: 1000
-    eval_frequency: 5        # How often to evaluate model
-    eval_batches: 10        # Number of batches for quick evaluation
-    clear_cache: true       # Clear CUDA cache after each step
+    eval_frequency: 5
+    eval_batches: 10
+    clear_cache: true
     
-    # Reward weights
+    # Reward weights for MMLU optimization
     reward_weights:
-      accuracy: 1.0         # Weight for accuracy maintenance
-      compression: 0.5      # Weight for compression achievement
-      importance: 0.3       # Weight for importance-based penalty
+      accuracy: 1.0    # Primary focus on maintaining MMLU accuracy
+      compression: 0.4 # Secondary focus on model size reduction
+      importance: 0.3  # Penalty for removing important heads
+      latency: 0.3    # Consider inference speed
     
     # Early stopping
     early_stopping:
@@ -69,21 +70,20 @@ rl:
     entropy_coef: 0.01
     max_grad_norm: 0.5
     hidden_dims: [256, 256]
-    update_interval: 5      # How often to update policy
+    update_interval: 5
 
 # Training Configuration
 training:
   data:
-    dataset: "wikitext"
-    dataset_config: "wikitext-2-raw-v1"
-    num_samples: 1000
+    dataset: "cais/mmlu"  # Updated to MMLU
+    split: "validation"   # Using validation split for evaluation
     batch_size: 8
     max_seq_length: 512
     eval_batch_size: 4
     prefetch_factor: 2
     eval_split: 0.1
     num_workers: 2
-    shuffle: true
+    shuffle: false       # No shuffling for evaluation
   
   optimization:
     num_episodes: 100
@@ -101,7 +101,7 @@ training:
   logging:
     log_freq: 1
     use_wandb: false
-    project_name: "llm-pruning"
+    project_name: "llm-pruning-mmlu"
     metrics_dir: "experiments/results/metrics"
     log_memory_usage: true
     log_dependency_graph: true
@@ -110,23 +110,22 @@ training:
 # Metrics Configuration
 metrics:
   eval:
-    num_batches: 50        # Number of batches for full evaluation
-    compute_perplexity: true
+    num_batches: 50
+    compute_perplexity: false  # Not needed for MMLU
     measure_latency: true
     measure_throughput: true
     measure_memory: true
   
   thresholds:
-    min_accuracy: 0.90
-    max_perplexity: 10.0
-    max_latency_increase: 0.2  # Maximum 20% latency increase
-    max_memory_usage: 38000    # MB
+    min_accuracy: 0.44        # 90% of baseline 49.3%
+    max_latency_increase: 0.2 # Maximum 20% latency increase
+    max_memory_usage: 38000   # MB
   
   save:
     dir: "experiments/results/metrics"
-    save_initial: true     # Save initial model metrics
-    save_frequency: 10     # Save metrics every N steps
-    format: "json"         # Format for saving metrics
+    save_initial: true
+    save_frequency: 10
+    format: "json"
 
 # System Configuration
 system:
@@ -154,7 +153,7 @@ memory:
 # Checkpointing
 checkpointing:
   save_dir: "experiments/results/checkpoints"
-  save_frequency: 10           # Save every N episodes
-  keep_last_n: 5              # Keep only last N checkpoints
-  save_metrics: true          # Save metrics with checkpoints
-  save_importance_scores: true # Save importance scores with checkpoints
+  save_frequency: 10
+  keep_last_n: 5
+  save_metrics: true
+  save_importance_scores: true
