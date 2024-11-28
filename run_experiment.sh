@@ -24,6 +24,10 @@ print_warning() {
 
 # Check required files and directories
 check_requirements() {
+<<<<<<< HEAD
+=======
+    # Check for required files
+>>>>>>> origin/main
     required_files=(
         "run_pipeline.py"
         "config/config.yaml"
@@ -55,6 +59,10 @@ fi
 # Configuration
 ENV_NAME="shrinker"
 PYTHON_VERSION="3.10"
+<<<<<<< HEAD
+=======
+HF_TOKEN=""  # Will be set by user input
+>>>>>>> origin/main
 
 # Check if CUDA is available
 if ! command -v nvidia-smi &> /dev/null; then
@@ -82,6 +90,7 @@ conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 # echo "Installing other requirements..."
 # pip install -r requirements.txt || error_exit "Failed to install requirements"
 
+<<<<<<< HEAD
 # Clone and set up lm-evaluation-harness
 # print_warning "Cloning lm-evaluation-harness repository..."
 # if [ -d "lm-evaluation-harness" ]; then
@@ -96,6 +105,15 @@ conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 # echo "Installing lm-evaluation-harness..."
 # pip install -e . || error_exit "Failed to install lm-evaluation-harness"
 # cd ..
+=======
+# Get HuggingFace token
+# echo -n "Please enter your HuggingFace token: "
+# read -r token
+# if [ -z "$token" ]; then
+#     error_exit "HuggingFace token is required"
+# fi
+export HF_TOKEN=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
+>>>>>>> origin/main
 
 # Create necessary directories
 mkdir -p experiments/results
@@ -108,7 +126,11 @@ monitor_gpu() {
         sleep 10
     done
 }
+<<<<<<< HEAD
 export HF_TOKEN=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
+=======
+
+>>>>>>> origin/main
 # Start GPU monitoring in background
 echo "Starting GPU monitoring..."
 monitor_gpu &
@@ -128,6 +150,12 @@ trap cleanup EXIT
 echo "Starting the experiment..."
 print_warning "This may take a while. GPU monitoring data will be saved in experiments/results/gpu_monitoring.csv"
 
+<<<<<<< HEAD
+=======
+# Create experiments directory if it doesn't exist
+mkdir -p experiments/results
+
+>>>>>>> origin/main
 # Run with error handling and logging
 {
     echo "=== Experiment Start: $(date) ===" 
@@ -149,4 +177,8 @@ fi
 # Deactivate conda environment
 conda deactivate
 
+<<<<<<< HEAD
 print_success "All done!"
+=======
+print_success "All done!"
+>>>>>>> origin/main

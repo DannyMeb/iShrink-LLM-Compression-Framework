@@ -1,15 +1,23 @@
 import torch
 import time
+<<<<<<< HEAD
 import subprocess
 import json
 from typing import Dict, Optional, Any
+=======
+import json
+from typing import Dict, Optional
+>>>>>>> origin/main
 from dataclasses import dataclass
 import logging
 import psutil
 from pathlib import Path
 import numpy as np
+<<<<<<< HEAD
 from lm_eval import evaluator, tasks
 from lm_eval.models import huggingface
+=======
+>>>>>>> origin/main
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +34,7 @@ class MetricsTracker:
     def __init__(self,
                  save_dir: Path,
                  device: torch.device,
+<<<<<<< HEAD
                  tokenizer,
                  config: Dict[str, Any],  # Add config parameter
                  use_wandb: bool = False):
@@ -51,6 +60,26 @@ class MetricsTracker:
             
             # 2. Measure latency and throughput
             latency, throughput = self._measure_performance(model)
+=======
+                 use_wandb: bool = False):
+        self.save_dir = save_dir
+        self.device = device
+        self.use_wandb = use_wandb
+        self.metrics_dir = save_dir / 'metrics'
+        self.metrics_dir.mkdir(parents=True, exist_ok=True)
+
+    def evaluate_model(self, 
+                      model: torch.nn.Module,
+                      eval_dataloader: torch.utils.data.DataLoader,
+                      ) -> ModelMetrics:
+        """Comprehensive model evaluation"""
+        try:
+            # 1. Measure accuracy
+            accuracy = self._measure_accuracy(model, eval_dataloader)
+            
+            # 2. Measure latency and throughput
+            latency, throughput = self._measure_performance(model, eval_dataloader)
+>>>>>>> origin/main
             
             # 3. Measure memory footprint
             memory_stats = self._measure_memory_usage(model)
@@ -67,11 +96,16 @@ class MetricsTracker:
             )
             
             return metrics
+<<<<<<< HEAD
                 
+=======
+            
+>>>>>>> origin/main
         except Exception as e:
             logger.error(f"Error during model evaluation: {str(e)}")
             raise
 
+<<<<<<< HEAD
     # def _measure_accuracy(self, model: torch.nn.Module) -> float:
     #     """
     #     Measure model accuracy using lm_eval framework for MMLU benchmark.
@@ -255,11 +289,60 @@ class MetricsTracker:
                     attention_mask=attention_mask
                 )
         
+=======
+    def _measure_accuracy(self, 
+                         model: torch.nn.Module,
+                         dataloader: torch.utils.data.DataLoader) -> float:
+        """Measure model accuracy on MMLU"""
+        model.eval()
+        correct = 0
+        total = 0
+        
+        with torch.no_grad():
+            for batch in dataloader:
+                # Move batch to device
+                batch = {k: v.to(self.device) for k, v in batch.items()}
+                
+                # Forward pass
+                outputs = model(**batch)
+                logits = outputs.logits
+                
+                # Get predictions
+                predictions = torch.argmax(logits, dim=-1)
+                
+                # Calculate accuracy
+                correct += (predictions == batch['labels']).sum().item()
+                total += batch['labels'].size(0)
+        
+        accuracy = correct / total
+        return accuracy
+
+    def _measure_performance(self, 
+                           model: torch.nn.Module,
+                           dataloader: torch.utils.data.DataLoader) -> tuple[float, float]:
+        """Measure model latency and throughput"""
+        model.eval()
+        batch = next(iter(dataloader))
+        batch = {k: v.to(self.device) for k, v in batch.items()}
+        
+        # Warmup
+        with torch.no_grad():
+            for _ in range(3):
+                _ = model(**batch)
+        
+        # Measure latency
+        torch.cuda.synchronize()
+        start_time = time.time()
+        with torch.no_grad():
+            for _ in range(10):
+                _ = model(**batch)
+>>>>>>> origin/main
         torch.cuda.synchronize()
         end_time = time.time()
         
         # Calculate metrics
         total_time = end_time - start_time
+<<<<<<< HEAD
         latency = (total_time / num_runs) * 1000  # Convert to ms
         throughput = num_runs / total_time  # samples/second
         
@@ -267,10 +350,15 @@ class MetricsTracker:
         logger.info(f"Average latency: {latency:.2f}ms")
         logger.info(f"Throughput: {throughput:.2f} samples/second")
         logger.info(f"Input sequence length: {input_ids.size(1)} tokens")
+=======
+        latency = (total_time / 10) * 1000  # Convert to ms
+        throughput = (10 * batch['input_ids'].size(0)) / total_time  # samples/second
+>>>>>>> origin/main
         
         return latency, throughput
 
     def _measure_memory_usage(self, model: torch.nn.Module) -> Dict[str, float]:
+<<<<<<< HEAD
         """
         Measure model memory footprint.
         
@@ -280,6 +368,9 @@ class MetricsTracker:
         Returns:
             dict: Memory statistics in MB
         """
+=======
+        """Measure model memory footprint"""
+>>>>>>> origin/main
         memory_stats = {
             'gpu_allocated': torch.cuda.memory_allocated(self.device) / 1024**2,  # MB
             'gpu_cached': torch.cuda.memory_reserved(self.device) / 1024**2,      # MB
@@ -288,6 +379,7 @@ class MetricsTracker:
         return memory_stats
 
     def save_metrics(self, metrics: ModelMetrics, filename: str):
+<<<<<<< HEAD
         """
         Save metrics to file.
         
@@ -295,6 +387,9 @@ class MetricsTracker:
             metrics: ModelMetrics instance to save
             filename: Name of the output file
         """
+=======
+        """Save metrics to file"""
+>>>>>>> origin/main
         metrics_dict = {
             'accuracy': metrics.accuracy,
             'latency_ms': metrics.latency,
@@ -311,6 +406,7 @@ class MetricsTracker:
         
         if self.use_wandb:
             import wandb
+<<<<<<< HEAD
             wandb.log(metrics_dict)
 
     def log_training_metrics(self, 
@@ -341,3 +437,6 @@ class MetricsTracker:
         metrics_file = self.metrics_dir / 'training_metrics.jsonl'
         with open(metrics_file, 'a') as f:
             f.write(json.dumps(metrics) + '\n')
+=======
+            wandb.log(metrics_dict)
+>>>>>>> origin/main
