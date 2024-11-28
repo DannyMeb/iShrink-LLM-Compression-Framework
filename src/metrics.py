@@ -182,21 +182,31 @@ class MetricsTracker:
             )
 
             # Log full results structure for debugging
-            logger.info(f"Full results structure: {results}")
+            # logger.info(f"Full results structure: {results}")
 
-            # Extract accuracy from the appropriate key in results
+            # Extract accuracy from the results structure
+            # Handle the case where the key is 'acc,none'
             if "mmlu" in results["results"]:
-                accuracy_dict = results["results"]["mmlu"]
-                # Try common key names for accuracy
-                for key in ["acc", "accuracy", "average_accuracy", "mean_accuracy"]:
-                    if key in accuracy_dict:
-                        accuracy = accuracy_dict[key]
-                        break
+                mmlu_results = results["results"]["mmlu"]
+                if "acc,none" in mmlu_results:
+                    accuracy = mmlu_results["acc,none"]
+                elif "acc" in mmlu_results:
+                    accuracy = mmlu_results["acc"]
+                else:
+                    # Log available keys for debugging
+                    logger.error(f"Available keys in mmlu_results: {mmlu_results.keys()}")
+                    raise KeyError("Could not find accuracy metric in MMLU results")
             else:
                 raise KeyError("Could not find MMLU results in evaluation output")
 
+            # Validate accuracy value
+            if not isinstance(accuracy, (int, float)):
+                raise ValueError(f"Invalid accuracy value type: {type(accuracy)}")
+            if not 0 <= accuracy <= 1:
+                logger.warning(f"Unusual accuracy value: {accuracy}")
+
             logger.info(f"MMLU Evaluation accuracy: {accuracy:.4f}")
-            return accuracy
+            return float(accuracy)
 
         except Exception as e:
             logger.error(f"Error during lm_eval accuracy measurement: {str(e)}")
