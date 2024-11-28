@@ -83,8 +83,8 @@ class PruningPipeline:
             metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
 
             # # 3. Build Pruning Units
-            # logger.info("Creating pruning units...")
-            # pruning_units = self._create_pruning_units(model)
+            logger.info("Creating pruning units...")
+            pruning_units = self._create_pruning_units(model)
             
             # # 4. Calculate Importance Scores
             # logger.info("Calculating importance scores...")
