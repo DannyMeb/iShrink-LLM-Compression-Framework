@@ -24,7 +24,6 @@ print_warning() {
 
 # Check required files and directories
 check_requirements() {
-    # Check for required files
     required_files=(
         "run_pipeline.py"
         "config/config.yaml"
@@ -56,7 +55,6 @@ fi
 # Configuration
 ENV_NAME="shrinker"
 PYTHON_VERSION="3.10"
-HF_TOKEN=""  # Will be set by user input
 
 # Check if CUDA is available
 if ! command -v nvidia-smi &> /dev/null; then
@@ -84,13 +82,20 @@ conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 # echo "Installing other requirements..."
 # pip install -r requirements.txt || error_exit "Failed to install requirements"
 
-# Get HuggingFace token
-# echo -n "Please enter your HuggingFace token: "
-# read -r token
-# if [ -z "$token" ]; then
-#     error_exit "HuggingFace token is required"
+# Clone and set up lm-evaluation-harness
+# print_warning "Cloning lm-evaluation-harness repository..."
+# if [ -d "lm-evaluation-harness" ]; then
+#     echo "Repository already exists. Pulling latest changes..."
+#     cd lm-evaluation-harness || error_exit "Failed to enter lm-evaluation-harness directory"
+#     git pull || error_exit "Failed to pull latest changes"
+# else
+#     git clone https://github.com/EleutherAI/lm-evaluation-harness.git || error_exit "Failed to clone repository"
+#     cd lm-evaluation-harness || error_exit "Failed to enter lm-evaluation-harness directory"
 # fi
-export HF_TOKEN=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
+
+# echo "Installing lm-evaluation-harness..."
+# pip install -e . || error_exit "Failed to install lm-evaluation-harness"
+# cd ..
 
 # Create necessary directories
 mkdir -p experiments/results
@@ -103,7 +108,7 @@ monitor_gpu() {
         sleep 10
     done
 }
-
+export HF_TOKEN=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
 # Start GPU monitoring in background
 echo "Starting GPU monitoring..."
 monitor_gpu &
@@ -122,9 +127,6 @@ trap cleanup EXIT
 # Run the experiment
 echo "Starting the experiment..."
 print_warning "This may take a while. GPU monitoring data will be saved in experiments/results/gpu_monitoring.csv"
-
-# Create experiments directory if it doesn't exist
-mkdir -p experiments/results
 
 # Run with error handling and logging
 {

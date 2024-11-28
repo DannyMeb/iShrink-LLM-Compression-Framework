@@ -1,0 +1,53 @@
+Metadata-Version: 2.1
+Name: llm_pruning
+Version: 0.1.0
+Summary: LLM Pruning using Reinforcement Learning
+Home-page: https://github.com/yourusername/llm_pruning
+Author: Your Name
+Author-email: your.email@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.8
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: lm-eval
+Requires-Dist: torch>=2.0.0
+Requires-Dist: transformers>=4.30.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: networkx>=3.0
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: accelerate>=0.26.0
+Requires-Dist: gym>=0.26.0
+Requires-Dist: stable-baselines3>=2.0.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: seaborn>=0.12.0
+Requires-Dist: wandb>=0.15.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: psutil>=5.9.0
+Requires-Dist: pyarrow>=12.0.0
+Requires-Dist: datasets>=2.12.0
+Requires-Dist: black>=23.3.0
+Requires-Dist: isort>=5.12.0
+Requires-Dist: flake8>=6.0.0
+Requires-Dist: pytest>=7.3.1
+Requires-Dist: tensorboard>=2.13.0
+Requires-Dist: jsonschema>=4.17.0
+Requires-Dist: boto3>=1.26.0
+Requires-Dist: ray>=2.5.0
+Requires-Dist: pre-commit>=3.3.0
+Requires-Dist: sphinx>=7.0.0
+Requires-Dist: sphinx-rtd-theme>=1.2.0
+Requires-Dist: setuptools>=65.0.0
+Requires-Dist: wheel>=0.40.0
+Provides-Extra: dev
+Requires-Dist: black>=23.3.0; extra == "dev"
+Requires-Dist: isort>=5.12.0; extra == "dev"
+Requires-Dist: flake8>=6.0.0; extra == "dev"
+Requires-Dist: pytest>=7.3.1; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: sphinx>=7.0.0; extra == "docs"
+Requires-Dist: sphinx-rtd-theme>=1.2.0; extra == "docs"

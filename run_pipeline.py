@@ -5,7 +5,7 @@ import yaml
 import logging
 import argparse
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, List, Optional
 import wandb
 from tqdm import tqdm
 
@@ -67,53 +67,55 @@ class PruningPipeline:
         try:
             # 1. Load Model and Data
             logger.info("Loading model and data...")
-            model, tokenizer, eval_dataloader = self._setup_model_and_data()
-            
+            model, tokenizer = self._setup_model_and_data()
+
             # 2. Initial Model Evaluation
             logger.info("Evaluating initial model...")
             metrics_tracker = MetricsTracker(
                 save_dir=self.save_dir,
                 device=self.device,
+                tokenizer=tokenizer,
+                config=self.config,
                 use_wandb=self.config['training']['logging']['use_wandb']
             )
-            initial_metrics = metrics_tracker.evaluate_model(model, eval_dataloader)
+            initial_metrics = metrics_tracker.evaluate_model(model, tokenizer)  # Pass both model and tokenizer
             metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
             
-            # 3. Build Pruning Units
-            logger.info("Creating pruning units...")
-            pruning_units = self._create_pruning_units(model)
+            # # 3. Build Pruning Units
+            # logger.info("Creating pruning units...")
+            # pruning_units = self._create_pruning_units(model)
             
-            # 4. Calculate Importance Scores
-            logger.info("Calculating importance scores...")
-            pruning_units = self._handle_importance_scores(model, tokenizer, eval_dataloader, pruning_units)
+            # # 4. Calculate Importance Scores
+            # logger.info("Calculating importance scores...")
+            # pruning_units = self._handle_importance_scores(model, tokenizer, eval_dataloader, pruning_units)
             
-            # 5. Setup Environment
-            logger.info("Setting up pruning environment...")
-            env = PruningEnvironment(
-                model=model,
-                pruning_units=pruning_units,
-                eval_dataloader=eval_dataloader,
-                metrics_tracker=metrics_tracker,
-                config=self.config['pruning']['env'],
-                device=self.device
-            )
+            # # 5. Setup Environment
+            # logger.info("Setting up pruning environment...")
+            # env = PruningEnvironment(
+            #     model=model,
+            #     pruning_units=pruning_units,
+            #     eval_dataloader=eval_dataloader,
+            #     metrics_tracker=metrics_tracker,
+            #     config=self.config['pruning']['env'],
+            #     device=self.device
+            # )
             
-            # 6. Setup RL Agent
-            logger.info("Setting up RL agent...")
-            agent = PPOAgent(
-                state_dim=env.observation_space.shape[0],
-                action_dim=env.action_space.n,
-                config=self.config['rl']['ppo'],
-                device=self.device
-            )
+            # # 6. Setup RL Agent
+            # logger.info("Setting up RL agent...")
+            # agent = PPOAgent(
+            #     state_dim=env.observation_space.shape[0],
+            #     action_dim=env.action_space.n,
+            #     config=self.config['rl']['ppo'],
+            #     device=self.device
+            # )
             
-            # 7. Train Agent
-            logger.info("Starting RL training...")
-            self._train_agent(env, agent)
+            # # 7. Train Agent
+            # logger.info("Starting RL training...")
+            # self._train_agent(env, agent)
             
-            # 8. Final Evaluation and Saving
-            logger.info("Performing final evaluation...")
-            self._save_final_results(model, env)
+            # # 8. Final Evaluation and Saving
+            # logger.info("Performing final evaluation...")
+            # self._save_final_results(model, env)
             
             logger.info("Pruning pipeline completed successfully!")
             
@@ -130,13 +132,14 @@ class PruningPipeline:
         model, tokenizer = model_loader.load()
         
         # Create evaluation dataloader
-        eval_dataloader, _ = create_mmlu_dataloader(
-            tokenizer=tokenizer,
-            config=self.config,
-            split="validation"
-        )
+        # eval_dataloader, _ = create_mmlu_dataloader(
+        #     tokenizer=tokenizer,
+        #     config=self.config,
+        #     split="validation"
+        # )
         
-        return model, tokenizer, eval_dataloader
+        return model, tokenizer
+        # , eval_dataloader
     
     def _create_pruning_units(self, model) -> List[PruningUnit]:
         """Create pruning units for attention heads"""
