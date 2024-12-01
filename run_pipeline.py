@@ -1,3 +1,5 @@
+#run_pipeline.py
+
 import os
 import json
 import torch
@@ -71,20 +73,20 @@ class PruningPipeline:
             model, tokenizer = self._setup_model_and_data()
             
             # 2. Initial Model Evaluation
-            logger.info("Evaluating initial model...")
-            metrics_tracker = MetricsTracker(
-                save_dir=self.save_dir,
-                device=self.device,
-                tokenizer=tokenizer,
-                config=self.config,
-                use_wandb=self.config['training']['logging']['use_wandb']
-            )
-            initial_metrics = metrics_tracker.evaluate_model(model, tokenizer)  # Pass both model and tokenizer
-            metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
+            # logger.info("Evaluating initial model...")
+            # metrics_tracker = MetricsTracker(
+            #     save_dir=self.save_dir,
+            #     device=self.device,
+            #     tokenizer=tokenizer,
+            #     config=self.config,
+            #     use_wandb=self.config['training']['logging']['use_wandb']
+            # )
+            # initial_metrics = metrics_tracker.evaluate_model(model, tokenizer)  # Pass both model and tokenizer
+            # metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
 
-            # # 3. Build Pruning Units
-            logger.info("Creating pruning units...")
-            pruning_units = self._create_pruning_units(model)
+            # # # 3. Build Pruning Units
+            # logger.info("Creating pruning units...")
+            # pruning_units = self._create_pruning_units(model)
             
             # # 4. Calculate Importance Scores
             # logger.info("Calculating importance scores...")
