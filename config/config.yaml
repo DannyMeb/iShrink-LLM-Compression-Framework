@@ -37,6 +37,8 @@ pruning:
     use_mixed_precision: true
     memory_efficient: true
     gradient_accumulation: true
+    metric_type: 'WIFN'           # FLAP metric: 'WIFN', 'WIFV', or 'IFV'
+
 
   # Environment configuration
   env:
@@ -76,6 +78,7 @@ rl:
 training:
   data:
     dataset: "cais/mmlu"  # Updated to MMLU
+    dataset_config: "all"
     split: "validation"   # Using validation split for evaluation
     batch_size: 8
     max_seq_length: 512

@@ -70,7 +70,7 @@ class PruningPipeline:
         try:
             # 1. Load Model and Data
             logger.info("Loading model and data...")
-            model, tokenizer = self._setup_model_and_data()
+            model, tokenizer,eval_dataloader = self._setup_model_and_data()
             
             # 2. Initial Model Evaluation
             # logger.info("Evaluating initial model...")
@@ -85,12 +85,12 @@ class PruningPipeline:
             # metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
 
             # # # 3. Build Pruning Units
-            # logger.info("Creating pruning units...")
-            # pruning_units = self._create_pruning_units(model)
+            logger.info("Creating pruning units...")
+            pruning_units = self._create_pruning_units(model)
             
-            # # 4. Calculate Importance Scores
-            # logger.info("Calculating importance scores...")
-            # pruning_units = self._handle_importance_scores(model, tokenizer, eval_dataloader, pruning_units)
+            # 4. Calculate Importance Scores
+            logger.info("Calculating importance scores...")
+            pruning_units = self._handle_importance_scores(model, tokenizer, eval_dataloader, pruning_units)
             
             # # 5. Setup Environment
             # logger.info("Setting up pruning environment...")
@@ -135,14 +135,13 @@ class PruningPipeline:
         model, tokenizer = model_loader.load()
         
         # Create evaluation dataloader
-        # eval_dataloader, _ = create_mmlu_dataloader(
-        #     tokenizer=tokenizer,
-        #     config=self.config,
-        #     split="validation"
-        # )
+        eval_dataloader, _ = create_mmlu_dataloader(
+            tokenizer=tokenizer,
+            config=self.config,
+            split="validation"
+        )
         
-        return model, tokenizer
-        # , eval_dataloader
+        return model, tokenizer, eval_dataloader
     
     def _create_pruning_units(self, model) -> List[PruningUnit]:
         """Create pruning units for attention heads"""
@@ -155,7 +154,7 @@ class PruningPipeline:
     
     def _handle_importance_scores(self, model, tokenizer, eval_dataloader, pruning_units):
         """Calculate or load importance scores"""
-        scores_path = self.save_dir / 'importance_scores' / 'head_importance_scores.json'
+        scores_path = self.save_dir / 'importance_scores' / 'importance_scores.json'
         
         if scores_path.exists():
             logger.info(f"Loading existing importance scores from {scores_path}")
@@ -169,15 +168,15 @@ class PruningPipeline:
             scorer = ImportanceScorer(
                 model=model,
                 tokenizer=tokenizer,
-                config=self.config['pruning']['importance'],
+                config=self.config['pruning']['importance'],  # Pass FLAP config
                 calibration_dataloader=eval_dataloader,
                 device=self.device
             )
             
-            for unit in tqdm(pruning_units, desc="Calculating importance scores"):
-                unit.importance_score = scorer.compute_importance(unit)
+            # Use FLAP's importance computation
+            pruning_units = scorer.compute_group_importances(pruning_units)
             
-            # Save scores
+            # Save computed scores
             scores_data = {
                 unit.id: {
                     'importance_score': float(unit.importance_score),
@@ -192,7 +191,7 @@ class PruningPipeline:
                 json.dump(scores_data, f, indent=2)
         
         return pruning_units
-    
+        
     def _train_agent(self, env, agent):
         """Train the RL agent"""
         config = self.config['training']['optimization']
