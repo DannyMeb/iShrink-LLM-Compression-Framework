@@ -72,9 +72,9 @@ echo "GPU Information:"
 nvidia-smi
 
 # Create and activate conda environment
-# echo "Creating conda environment..."
-# conda create -y -n $ENV_NAME python=$PYTHON_VERSION || error_exit "Failed to create conda environment"
-# print_success "Conda environment created successfully!"
+echo "Creating conda environment..."
+conda create -y -n $ENV_NAME python=$PYTHON_VERSION || error_exit "Failed to create conda environment"
+print_success "Conda environment created successfully!"
 
 # Activate conda environment
 echo "Activating conda environment..."
@@ -82,8 +82,8 @@ source $(conda info --base)/etc/profile.d/conda.sh
 conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 
 # Install other requirements
-# echo "Installing other requirements..."
-# pip install -r requirements.txt || error_exit "Failed to install requirements"
+echo "Installing other requirements..."
+pip install -r requirements.txt || error_exit "Failed to install requirements"
 
 
 # Clone and set up lm-evaluation-harness
@@ -158,8 +158,6 @@ fi
 # Deactivate conda environment
 conda deactivate
 
-
-print_success "All done!"
 
 print_success "All done!"
 

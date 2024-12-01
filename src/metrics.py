@@ -175,7 +175,7 @@ class MetricsTracker:
             results = evaluator.simple_evaluate(
                 model=hf_model,
                 tasks=["mmlu"],
-                num_fewshot=5,
+                num_fewshot=1,
                 limit=0.1,
                 bootstrap_iters=1000,
                 device=str(self.device)
