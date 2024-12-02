@@ -22,13 +22,14 @@ pruning:
     min_accuracy: 0.44  # 90% of baseline 49.3% MMLU accuracy
     min_accuracy_ratio: 0.90
     max_pruned_heads: 100
-    compression_target: 0.5
+    compression_target: 0.9
   
   # Dependency configuration
   dependency:
     hidden_size: 768
     num_heads: 12
     mlp_ratio: 4
+    mlp_group_size: 128  # Size of MLP neuron groups
   
   # Importance scoring configuration
   importance:
