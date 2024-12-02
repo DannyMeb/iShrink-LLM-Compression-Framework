@@ -1,3 +1,5 @@
+#importance_scorer.py
+
 import torch
 import torch.nn as nn
 from typing import Dict, List
@@ -30,32 +32,50 @@ class ImportanceScorer:
         """Initialize wrapped layers and collect statistics"""
         try:
             logger.info("Initializing wrapped layers...")
+            print(f"\nDebug: Starting initialization for unit {unit.id}")
             
-            # Create wrapped layers
-            for name, params in unit.parameters.items():
-                module = params.module if hasattr(params, 'module') else None
-                if module is not None:
-                    self.wrapped_layers[name] = BiasGPT(module, self.metric_type)
+            # Create wrapped layers for each parameter tensor
+            for name, param_tensor in unit.parameters.items():
+                print(f"\nDebug: Creating wrapper for {name}")
+                print(f"Parameter shape: {param_tensor.shape}")
+                print(f"Parameter stats: min={param_tensor.min().item():.6f}, "
+                      f"max={param_tensor.max().item():.6f}, "
+                      f"mean={param_tensor.mean().item():.6f}")
+                
+                # Create wrapper directly with parameter tensor
+                self.wrapped_layers[name] = BiasGPT(
+                    param_tensor, 
+                    self.metric_type,
+                    device=self.device
+                )
             
             # Collect statistics through forward passes
             for batch_idx, batch in enumerate(tqdm(self.dataloader, 
-                                                 desc="Collecting layer statistics",
+                                                 desc="Collecting statistics",
                                                  leave=False)):
                 if batch_idx >= self.N:
                     break
                 
-                # MMLU dataloader returns dictionary with 'input_ids' and 'attention_mask'
+                # Process input batch
                 inputs = batch['input_ids'].to(self.device)
+                print(f"\nProcessing batch {batch_idx}")
+                print(f"Input shape: {inputs.shape}")
+                print(f"Input stats: min={inputs.min().item()}, "
+                      f"max={inputs.max().item()}, "
+                      f"mean={inputs.float().mean().item():.6f}")
                 
-                # Update statistics for each layer
+                # Update statistics for all layers
                 for name, wrapper in self.wrapped_layers.items():
-                    wrapper.add_batch(inputs, None)
+                    wrapper.add_batch(inputs)
                     
-            logger.info(f"Processed {batch_idx + 1} batches for statistics collection")
+                    # Debug statistics after update
+                    if hasattr(wrapper, 'scaler_inp'):
+                        print(f"\nLayer {name} stats after batch {batch_idx}:")
+                        print(f"Scaler stats: min={wrapper.scaler_inp.min().item():.6f}, "
+                              f"max={wrapper.scaler_inp.max().item():.6f}, "
+                              f"mean={wrapper.scaler_inp.mean().item():.6f}")
             
-            # Finalize statistics
-            for wrapper in self.wrapped_layers.values():
-                wrapper.free()
+            logger.info(f"Processed {batch_idx + 1} batches for statistics collection")
                 
         except Exception as e:
             logger.error(f"Error initializing wrapped layers: {str(e)}")
@@ -64,25 +84,49 @@ class ImportanceScorer:
     def compute_importance(self, pruning_unit: PruningUnit) -> float:
         """Compute importance score for a pruning unit"""
         try:
+            print(f"\nComputing importance for unit {pruning_unit.id}")
+            
             if not self.wrapped_layers:
                 self._initialize_wrapped_layers(pruning_unit)
             
             importance = 0.0
             for name, weight in pruning_unit.parameters.items():
+                print(f"\nProcessing parameter: {name}")
+                
                 if name not in self.wrapped_layers:
+                    logger.warning(f"Parameter {name} not found in wrapped layers")
                     continue
                 
                 wrapper = self.wrapped_layers[name]
                 
                 if self.metric_type == 'WIFN':
-                    importance += (torch.abs(weight) * 
-                                 torch.sqrt(wrapper.scaler_inp.reshape((1, -1)))).mean().item()
+                    # Debug intermediate computations
+                    abs_weights = torch.abs(weight)
+                    scaler = wrapper.scaler_inp
+                    sqrt_scaler = torch.sqrt(scaler.clamp(min=1e-10))
+                    product = abs_weights * sqrt_scaler.view(1, -1)
+                    importance_score = product.mean().item()
+                    
+                    print(f"\nWIFN computation for {name}:")
+                    print(f"Weight stats: min={abs_weights.min().item():.6f}, "
+                          f"max={abs_weights.max().item():.6f}")
+                    print(f"Scaler stats: min={sqrt_scaler.min().item():.6f}, "
+                          f"max={sqrt_scaler.max().item():.6f}")
+                    print(f"Product stats: min={product.min().item():.6f}, "
+                          f"max={product.max().item():.6f}")
+                    print(f"Importance score: {importance_score:.6f}")
+                    
+                    importance += importance_score
+                    
                 elif self.metric_type == 'WIFV':
-                    importance += (wrapper.fluc_inp * 
-                                 torch.sum(weight.pow(2), dim=0)).mean().item()
+                    fluc = wrapper.fluc_inp
+                    weight_sq = torch.sum(weight.pow(2), dim=0)
+                    importance_score = (fluc * weight_sq).mean().item()
+                    importance += importance_score
                 else:  # IFV
                     importance += wrapper.fluc_inp.mean().item()
             
+            print(f"\nFinal importance for unit {pruning_unit.id}: {importance:.6f}")
             pruning_unit.importance_score = importance
             return importance
             
@@ -92,11 +136,12 @@ class ImportanceScorer:
     
     def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
         """Compute importance scores for all units"""
-        logger.info(f"Computing importance scores for {len(pruning_units)} units using {self.metric_type}")
+        logger.info(f"Computing importance scores for {len(pruning_units)} units "
+                   f"using {self.metric_type}")
         
         for unit in tqdm(pruning_units, desc="Calculating importance scores"):
             score = self.compute_importance(unit)
-            logger.debug(f"Unit {unit.id} importance: {score:.4f}")
+            logger.info(f"Unit {unit.id} importance: {score:.4f}")
         
         # Clean up
         for wrapper in self.wrapped_layers.values():
@@ -106,5 +151,10 @@ class ImportanceScorer:
         
         # Sort by importance score
         pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
+        
+        # Log sorted scores
+        print("\nFinal sorted importance scores:")
+        for unit in pruning_units[:10]:
+            print(f"{unit.id}: {unit.importance_score:.6f}")
         
         return pruning_units

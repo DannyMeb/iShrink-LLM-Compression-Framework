@@ -83,75 +83,7 @@ class MetricsTracker:
         except Exception as e:
             logger.error(f"Error during model evaluation: {str(e)}")
             raise
-     
-
-
-
-
-    # def _measure_accuracy(self, model: torch.nn.Module) -> float:
-    #     """
-    #     Measure model accuracy using lm_eval framework for MMLU benchmark.
-    #     Uses the locally saved model from ModelLoader.
-    #     """
-    #     try:
-    #         # Create temporary path to save results
-    #         output_path = self.save_dir / 'temp_eval_results'
-    #         output_path.mkdir(exist_ok=True)
-            
-    #         # Use the local model path where ModelLoader saved the model
-    #         model_path = str(Path(self.config['model']['local_path']))
-            
-    #         # Run lm_eval command
-    #         cmd = [
-    #             "python", "-m", "lm_eval",
-    #             "--model", "hf",
-    #             "--model_args", (
-    #                 f"pretrained={model_path},"  # Use local path where model is saved
-    #                 "trust_remote_code=True"
-    #             ),
-    #             "--tasks", "mmlu",
-    #             "--num_fewshot", "5",
-    #             "--device", str(self.device),
-    #             "--batch_size", "8",
-    #             "--output_path", str(output_path)
-    #         ]
-            
-    #         # Run the command and capture output
-    #         process = subprocess.Popen(
-    #             cmd,
-    #             stdout=subprocess.PIPE,
-    #             stderr=subprocess.PIPE,
-    #             text=True
-    #         )
-            
-    #         # Get output and error streams
-    #         stdout, stderr = process.communicate()
-            
-    #         # Log both stdout and stderr
-    #         logger.info(f"lm_eval stdout:\n{stdout}")
-    #         if stderr:
-    #             logger.error(f"lm_eval stderr:\n{stderr}")
-                
-    #         if process.returncode != 0:
-    #             raise subprocess.CalledProcessError(process.returncode, cmd, stdout, stderr)
-
-    #         # Read results from the output file
-    #         results_file = output_path / 'results.json'
-    #         if results_file.exists():
-    #             with open(results_file) as f:
-    #                 results = json.load(f)
-    #                 accuracy = results["results"]["mmlu"]["acc"]
-    #                 logger.info(f"MMLU Evaluation accuracy: {accuracy:.4f}")
-    #                 return accuracy
-    #         else:
-    #             raise FileNotFoundError(f"Results file not found at {results_file}")
-
-    #     except Exception as e:
-    #         logger.error(f"Error during lm_eval accuracy measurement: {str(e)}")
-    #         if hasattr(e, 'stderr'):
-    #             logger.error(f"Stderr: {e.stderr}")
-    #         raise
-    
+  
     def _measure_accuracy(self, model: torch.nn.Module, tokenizer) -> float:
         """
         Measure model accuracy using lm_eval framework for MMLU benchmark.

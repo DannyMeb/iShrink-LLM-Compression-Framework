@@ -49,7 +49,7 @@ class DependencyGraphBuilder:
                 raise ValueError("Could not find transformer layers")
             
             total_layers = len(layers)
-            start_layer = int(total_layers * 0.8)  # Last 20%
+            start_layer = int(total_layers * 0.98)  # Last 20%
             
             logger.info(f"Found {len(layers)} transformer layers")
             logger.info(f"Processing last 20% of layers: {start_layer} to {total_layers-1}")
@@ -114,20 +114,30 @@ class DependencyGraphBuilder:
     def _create_mlp_unit(self, layer_idx: int, group_idx: int, layer: nn.Module) -> PruningUnit:
         """Create a pruning unit from a group of MLP neurons"""
         try:
+            # Print full MLP shapes first
+            print(f"\nDebug MLP layer {layer_idx}, group {group_idx}:")
+            print(f"Full gate_proj shape: {layer.mlp.gate_proj.weight.shape}")
+            print(f"Full up_proj shape: {layer.mlp.up_proj.weight.shape}")
+            print(f"Full down_proj shape: {layer.mlp.down_proj.weight.shape}")
+            
             # Calculate start and end indices for this group
             start_idx = group_idx * self.mlp_group_size
             end_idx = min(start_idx + self.mlp_group_size, self.intermediate_size)
             
-            # Skip if we're beyond the layer size
-            if start_idx >= self.intermediate_size:
-                return None
+            print(f"Group indices: {start_idx} to {end_idx}")
             
             # Get parameters for this group of neurons
             parameters = {
-                'gate_proj': layer.mlp.gate_proj.weight[start_idx:end_idx, :],  # [group_size, hidden_size]
-                'up_proj': layer.mlp.up_proj.weight[start_idx:end_idx, :],      # [group_size, hidden_size]
-                'down_proj': layer.mlp.down_proj.weight[:, start_idx:end_idx]   # [hidden_size, group_size]
+                'gate_proj': layer.mlp.gate_proj.weight[start_idx:end_idx, :],
+                'up_proj': layer.mlp.up_proj.weight[start_idx:end_idx, :],
+                'down_proj': layer.mlp.down_proj.weight[:, start_idx:end_idx]
             }
+            
+            # Print sliced shapes
+            print(f"Sliced shapes:")
+            print(f"gate_proj: {parameters['gate_proj'].shape}")
+            print(f"up_proj: {parameters['up_proj'].shape}")
+            print(f"down_proj: {parameters['down_proj'].shape}")
             
             return PruningUnit(
                 id=f"mlp_{layer_idx}_{group_idx}",
@@ -135,7 +145,7 @@ class DependencyGraphBuilder:
                 head_idx=group_idx,
                 parameters=parameters
             )
-            
+                
         except AttributeError as e:
             logger.error(f"Error creating MLP unit: {str(e)}")
             raise
