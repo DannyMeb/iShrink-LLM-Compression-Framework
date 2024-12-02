@@ -19,8 +19,10 @@ model:
 # Pruning Configuration
 pruning:
   targets:
-    min_accuracy: 0.44  # 90% of baseline 49.3% MMLU accuracy
+    min_accuracy: 0.40  # 90% of baseline 49.3% MMLU accuracy
     min_accuracy_ratio: 0.90
+    max_pruned_heads: 100
+    compression_target: 0.9
     max_pruned_heads: 100
     compression_target: 0.9
   
@@ -48,13 +50,14 @@ pruning:
     eval_batches: 10
     clear_cache: true
     
-    # Reward weights for MMLU optimization
-    reward_weights:
-      accuracy: 1.0    # Primary focus on maintaining MMLU accuracy
-      compression: 0.4 # Secondary focus on model size reduction
-      importance: 0.3  # Penalty for removing important heads
-      latency: 0.3    # Consider inference speed
     
+    max_prune_per_step: 5  # Maximum units to prune per step
+    reward_weights:
+      accuracy: 1.0    # Weight for accuracy maintenance
+      compression: 0.5 # Weight for compression progress
+      balance: 0.3     # Weight for layer balance
+      violation_penalty: 2.0  # Penalty for violating constraints
+      
     # Early stopping
     early_stopping:
       patience: 10

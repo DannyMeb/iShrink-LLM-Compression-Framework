@@ -321,3 +321,20 @@ class MetricsTracker:
         if self.use_wandb:
             import wandb
             wandb.log(metrics_dict)
+    
+    def load_metrics(self, filename: str) -> ModelMetrics:
+        """Load metrics from file"""
+        metrics_path = self.metrics_dir / filename
+        try:
+            with open(metrics_path) as f:
+                metrics_dict = json.load(f)
+                return ModelMetrics(
+                    accuracy=metrics_dict['accuracy'],
+                    latency=metrics_dict['latency_ms'],
+                    throughput=metrics_dict['throughput_samples_per_sec'],
+                    memory_footprint=metrics_dict['memory_footprint_mb'],
+                    parameter_count=metrics_dict['parameter_count']
+                )
+        except Exception as e:
+            logger.error(f"Failed to load metrics from {metrics_path}: {str(e)}")
+            raise

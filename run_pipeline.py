@@ -73,18 +73,23 @@ class PruningPipeline:
             model, tokenizer,eval_dataloader = self._setup_model_and_data()
             
             # 2. Initial Model Evaluation
-            # logger.info("Evaluating initial model...")
-            # metrics_tracker = MetricsTracker(
-            #     save_dir=self.save_dir,
-            #     device=self.device,
-            #     tokenizer=tokenizer,
-            #     config=self.config,
-            #     use_wandb=self.config['training']['logging']['use_wandb']
-            # )
-            # initial_metrics = metrics_tracker.evaluate_model(model, tokenizer)  # Pass both model and tokenizer
-            # metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
+            metrics_tracker = MetricsTracker(
+                save_dir=self.save_dir, device=self.device,
+                tokenizer=tokenizer, config=self.config,
+                use_wandb=self.config['training']['logging']['use_wandb'])
+            
+            initial_metrics_path = self.save_dir / 'metrics' / 'initial_metrics.json'
+            if initial_metrics_path.exists():
+                logger.info("Loading existing initial metrics...")
+                initial_metrics = metrics_tracker.load_metrics('initial_metrics.json')
+            else:
+                logger.info("Evaluating initial model...")
+                initial_metrics = metrics_tracker.evaluate_model(model, tokenizer)
+                metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
+                
+            logger.info(f"Initial model accuracy: {initial_metrics.accuracy:.4f}")
 
-            # # # 3. Build Pruning Units
+            # 3. Build Pruning Units
             logger.info("Creating pruning units...")
             pruning_units = self._create_pruning_units(model)
             
@@ -93,15 +98,16 @@ class PruningPipeline:
             pruning_units = self._handle_importance_scores(model, tokenizer, eval_dataloader, pruning_units)
             
             # # 5. Setup Environment
-            # logger.info("Setting up pruning environment...")
-            # env = PruningEnvironment(
-            #     model=model,
-            #     pruning_units=pruning_units,
-            #     eval_dataloader=eval_dataloader,
-            #     metrics_tracker=metrics_tracker,
-            #     config=self.config['pruning']['env'],
-            #     device=self.device
-            # )
+            logger.info("Setting up pruning environment...")
+            env = PruningEnvironment(
+                model=model,
+                pruning_units=pruning_units,
+                eval_dataloader=eval_dataloader,
+                metrics_tracker=metrics_tracker,
+                config=self.config,  # Pass the entire config
+                device=self.device,
+                initial_metrics=initial_metrics
+            )
             
             # # 6. Setup RL Agent
             # logger.info("Setting up RL agent...")
