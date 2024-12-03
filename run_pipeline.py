@@ -1,6 +1,7 @@
 # run_pipeline.py
 
 import os
+import numpy as np
 import json
 import torch
 import yaml
@@ -272,18 +273,22 @@ class PruningPipeline:
     
     def _setup_agent(self, env):
         """Setup RL agent"""
-        obs_dim = (
-            env.observation_space['global_features'].shape[0] +
-            env.observation_space['unit_features'].shape[1] +
-            env.observation_space['layer_features'].shape[1]
-        )
+        # Calculate total state dimension
+        global_dim = env.observation_space['global_features'].shape[0]  # 3
+        unit_dim = np.prod(env.observation_space['unit_features'].shape)  # 72 * 4 = 288
+        layer_dim = np.prod(env.observation_space['layer_features'].shape)  # 1 * 2 = 2
+        
+        total_state_dim = global_dim + unit_dim + layer_dim  # 293
+        
+        logger.info(f"Setting up agent with state_dim={total_state_dim}, "
+                    f"action_dim={len(env.pruning_units)}")
         
         return PPOAgent(
-            state_dim=obs_dim,
+            state_dim=total_state_dim,
             action_dim=len(env.pruning_units),
             config=self.config['rl']['ppo'],
             device=self.device
-        )
+    )
     
     def _save_final_results(self, model, env, training_results, eval_results):
         """Save final model and results"""

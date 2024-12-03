@@ -105,33 +105,48 @@ class PruningEnvironment(gym.Env):
     def step(self, action: np.ndarray) -> Tuple[Dict, float, bool, bool, Dict]:
         """Execute pruning actions"""
         try:
-            # Validate action
-            if action.sum() > self.max_prune_per_step:
-                action_indices = np.where(action)[0]
-                np.random.shuffle(action_indices)
-                action = np.zeros_like(action)
-                action[action_indices[:self.max_prune_per_step]] = 1
+            # Convert action to numpy if it's a tensor
+            if torch.is_tensor(action):
+                action = action.cpu().numpy()
+            
+            # Flatten if needed
+            action = action.reshape(-1)
+            
+            # Make sure action is boolean array
+            action = action.astype(bool)
+            
+            # Count number of True values
+            num_actions = int(np.sum(action))
+            logger.debug(f"Number of actions: {num_actions}")
             
             # Track pruned units
             newly_pruned = []
             
-            # Execute pruning
-            for idx, should_prune in enumerate(action):
-                if should_prune and not self._is_pruned(idx):
+            # Execute pruning for each True value in action
+            true_indices = np.where(action)[0]
+            for idx in true_indices:
+                if not self._is_pruned(idx):  # Check if not already pruned
                     unit = self.pruning_units[idx]
                     self._prune_unit(unit)
                     newly_pruned.append(unit.id)
                     self.state.pruned_groups.append(unit.id)
                     self.state.total_pruned += 1
+                    logger.debug(f"Pruned unit {unit.id} at index {idx}")
             
             self.state.current_step += 1
+            logger.debug(f"Step {self.state.current_step}: Pruned {len(newly_pruned)} units")
             
             # Evaluate if any units were pruned
-            if newly_pruned:
-                self.state.current_metrics = self.metrics_tracker.evaluate_model(
-                    self.model,
-                    self.eval_dataloader
-                )
+            if newly_pruned:  # List is non-empty
+                try:
+                    self.state.current_metrics = self.metrics_tracker.evaluate_model(
+                        self.model,
+                        self.eval_dataloader
+                    )
+                except Exception as e:
+                    logger.error(f"Error evaluating model: {str(e)}")
+                    # Use previous metrics if evaluation fails
+                    pass
             
             # Calculate reward
             reward = self._calculate_reward(newly_pruned)
@@ -143,8 +158,8 @@ class PruningEnvironment(gym.Env):
             # Info dict
             info = {
                 'newly_pruned': newly_pruned,
-                'accuracy': self.state.current_metrics.accuracy,
-                'compression_ratio': self.state.total_pruned / len(self.pruning_units),
+                'accuracy': float(self.state.current_metrics.accuracy),
+                'compression_ratio': float(self.state.total_pruned / len(self.pruning_units)),
                 'termination_reason': self._get_termination_reason() if terminated else None
             }
             
@@ -152,8 +167,12 @@ class PruningEnvironment(gym.Env):
             
         except Exception as e:
             logger.error(f"Error during step: {str(e)}")
-            return self._get_observation(), -1.0, True, True, {'error': str(e)}
-    
+            logger.error(f"Action shape before flatten: {action.shape}, dtype: {action.dtype}")
+            logger.error(f"Action values: {action}")
+            # Return observation with error info
+            error_info = {'error': str(e), 'action_shape': action.shape, 'action_dtype': str(action.dtype)}
+            return self._get_observation(), -1.0, True, True, error_info
+        
     def _get_observation(self) -> Dict[str, np.ndarray]:
         """Get current state observation"""
         # Global features
