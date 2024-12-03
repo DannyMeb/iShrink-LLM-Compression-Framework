@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Dict, List, Any, Optional
 from .dependency_graph import PruningUnit
 import logging
-import torch.nn.functional as F
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -15,9 +15,9 @@ class ImportanceScorer:
        self.tokenizer = tokenizer
        self.device = device
        self.config = config
+       self.lambda_term = config.get('lambda', 0.05)
        
-       # Get calibration subset
-       percent = config.get('calibration_percent', 0.01) 
+       percent = config.get('calibration_percent', 0.01)
        total_samples = len(calibration_dataloader.dataset)
        num_samples = int(total_samples * percent)
        
@@ -36,50 +36,71 @@ class ImportanceScorer:
        self.subset = subset_data
        logger.info(f"Using {samples_collected} samples for importance scoring")
 
-   # importance_scorer.py - key method update
    def compute_importance(self, pruning_unit: PruningUnit) -> float:
-        importance_scores = []
-        batch_size = 4  # Reduced batch size
+       try:
+          importance_scores = []
+          batch_size = 4
+          
+          for batch in self.subset:
+              n_samples = batch['input_ids'].size(0)
+              for i in range(0, n_samples, batch_size):
+                  batch_slice = {
+                      'input_ids': batch['input_ids'][i:i+batch_size].clone(),
+                      'attention_mask': batch['attention_mask'][i:i+batch_size].clone()
+                  }
+                  
+                  # MSE term
+                  with torch.cuda.amp.autocast(), torch.no_grad():
+                      outputs_normal = self.model(
+                          input_ids=batch_slice['input_ids'],
+                          attention_mask=batch_slice['attention_mask']
+                      ).logits
+                      
+                      saved_tensors = {}
+                      for name, param in pruning_unit.parameters.items():
+                          saved_tensors[name] = param.data.clone()
+                          param.data.zero_()
+                      
+                      outputs_zeroed = self.model(
+                          input_ids=batch_slice['input_ids'],
+                          attention_mask=batch_slice['attention_mask']
+                      ).logits
+                      
+                      for name, param in pruning_unit.parameters.items():
+                          param.data.copy_(saved_tensors[name])
+                      
+                      mse_term = F.mse_loss(outputs_normal, outputs_zeroed).item()
+                  
+                  # Gradient sensitivity term
+                  self.model.zero_grad()
+                  with torch.enable_grad():
+                      outputs = self.model(
+                          input_ids=batch_slice['input_ids'],
+                          attention_mask=batch_slice['attention_mask']
+                      )
+                      
+                      loss = F.cross_entropy(
+                          outputs.logits.view(-1, outputs.logits.size(-1)),
+                          batch_slice['input_ids'].view(-1)
+                      )
+                      loss.backward()
+                      
+                      grad_norm = sum(
+                          param.grad.norm().item() ** 2 
+                          for param in pruning_unit.parameters.values()
+                          if param.grad is not None
+                      )
+                  
+                  importance = mse_term + self.lambda_term * grad_norm
+                  importance_scores.append(importance)
+                  torch.cuda.empty_cache()
+          
+          return sum(importance_scores) / len(importance_scores)
+       except Exception as e:
+        logger.error(f"Error computing importance for {pruning_unit.id}: {str(e)}")
+        return 0.0
         
-        for batch in self.subset:
-            # Split into smaller batches
-            n_samples = batch['input_ids'].size(0)
-            for i in range(0, n_samples, batch_size):
-                batch_slice = {
-                    'input_ids': batch['input_ids'][i:i+batch_size].clone(),
-                    'attention_mask': batch['attention_mask'][i:i+batch_size].clone()
-                }
-                
-                with torch.cuda.amp.autocast(), torch.no_grad():
-                    outputs_normal = self.model(
-                        input_ids=batch_slice['input_ids'],
-                        attention_mask=batch_slice['attention_mask']
-                    ).logits
-                    
-                    # Save and zero parameters
-                    saved_tensors = {}
-                    for name, param in pruning_unit.parameters.items():
-                        saved_tensors[name] = param.data.clone()
-                        param.data.zero_()
-                    
-                    outputs_zeroed = self.model(
-                        input_ids=batch_slice['input_ids'],
-                        attention_mask=batch_slice['attention_mask']
-                    ).logits
-                    
-                    # Restore parameters
-                    for name, param in pruning_unit.parameters.items():
-                        param.data.copy_(saved_tensors[name])
-                
-                diff = F.mse_loss(outputs_normal, outputs_zeroed).item()
-                importance_scores.append(diff)
-                
-                torch.cuda.empty_cache()
-        
-        return sum(importance_scores) / len(importance_scores)
-
    def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
-       """Compute importance scores for all pruning units"""
        logger.info(f"Computing importance scores for {len(pruning_units)} units")
        was_training = self.model.training
        self.model.eval()
@@ -97,11 +118,9 @@ class ImportanceScorer:
                for unit in pruning_units:
                    unit.importance_score /= max_score
            
-           # Sort by importance
            pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
            
-           # Log top scores
-           logger.info("\n Daniel, Top 10 importance scores:")
+           logger.info("\nTop 10 importance scores:")
            for unit in pruning_units[:10]:
                logger.info(f"{unit.id}: {unit.importance_score:.6f}")
            
@@ -113,9 +132,10 @@ class ImportanceScorer:
            torch.cuda.empty_cache()
 
    def validate_scores(self, pruning_units: List[PruningUnit]) -> bool:
-       """Validate computed importance scores"""
        scores = [unit.importance_score for unit in pruning_units]
+       
        if not scores:
+           logger.error("No importance scores found")
            return False
            
        if all(s == 0 for s in scores):
