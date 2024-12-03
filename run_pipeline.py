@@ -109,15 +109,20 @@ class PruningPipeline:
                 initial_metrics=initial_metrics
             )
             
-            # # 6. Setup RL Agent
-            # logger.info("Setting up RL agent...")
-            # agent = PPOAgent(
-            #     state_dim=env.observation_space.shape[0],
-            #     action_dim=env.action_space.n,
-            #     config=self.config['rl']['ppo'],
-            #     device=self.device
-            # )
-            
+           # 6. Setup RL Agent
+            logger.info("Setting up RL agent...")
+            obs_dim = (
+                env.observation_space['global_features'].shape[0] +
+                env.observation_space['unit_features'].shape[1] +
+                env.observation_space['layer_features'].shape[1]
+            )
+            agent = PPOAgent(
+                state_dim=obs_dim,
+                action_dim=len(pruning_units),  # Number of prunable units
+                config=self.config['rl']['ppo'],
+                device=self.device
+            )
+                        
             # # 7. Train Agent
             # logger.info("Starting RL training...")
             # self._train_agent(env, agent)
