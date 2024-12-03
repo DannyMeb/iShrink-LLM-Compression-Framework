@@ -1,362 +1,362 @@
 {
-  "attn_15_0": {
-    "importance_score": 16296.724853515625,
-    "layer_idx": 15,
-    "head_idx": 0
-  },
-  "attn_15_1": {
-    "importance_score": 16221.71728515625,
-    "layer_idx": 15,
-    "head_idx": 1
-  },
-  "attn_15_2": {
-    "importance_score": 16210.987548828125,
-    "layer_idx": 15,
-    "head_idx": 2
-  },
-  "attn_15_7": {
-    "importance_score": 15693.673828125,
-    "layer_idx": 15,
-    "head_idx": 7
-  },
-  "attn_15_5": {
-    "importance_score": 15252.788818359375,
+  "mlp_15_5": {
+    "importance_score": 1.0,
     "layer_idx": 15,
     "head_idx": 5
-  },
-  "attn_15_4": {
-    "importance_score": 15045.776000976562,
-    "layer_idx": 15,
-    "head_idx": 4
-  },
-  "attn_15_6": {
-    "importance_score": 14134.05419921875,
-    "layer_idx": 15,
-    "head_idx": 6
   },
   "attn_15_3": {
-    "importance_score": 13279.37841796875,
+    "importance_score": 0.38057925014877997,
     "layer_idx": 15,
     "head_idx": 3
   },
-  "mlp_15_0": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 0
-  },
-  "mlp_15_1": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 1
-  },
   "mlp_15_2": {
-    "importance_score": 0.0,
+    "importance_score": 0.27179627058123385,
     "layer_idx": 15,
     "head_idx": 2
   },
-  "mlp_15_3": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 3
-  },
-  "mlp_15_4": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 4
-  },
-  "mlp_15_5": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 5
-  },
-  "mlp_15_6": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 6
-  },
-  "mlp_15_7": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 7
-  },
   "mlp_15_8": {
-    "importance_score": 0.0,
+    "importance_score": 0.1374975203332672,
     "layer_idx": 15,
     "head_idx": 8
   },
-  "mlp_15_9": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 9
-  },
-  "mlp_15_10": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 10
-  },
-  "mlp_15_11": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 11
-  },
-  "mlp_15_12": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 12
-  },
-  "mlp_15_13": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 13
-  },
-  "mlp_15_14": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 14
-  },
   "mlp_15_15": {
-    "importance_score": 0.0,
+    "importance_score": 0.13471014950136156,
     "layer_idx": 15,
     "head_idx": 15
   },
-  "mlp_15_16": {
-    "importance_score": 0.0,
+  "mlp_15_31": {
+    "importance_score": 0.1314020486555698,
     "layer_idx": 15,
-    "head_idx": 16
+    "head_idx": 31
   },
-  "mlp_15_17": {
-    "importance_score": 0.0,
+  "mlp_15_6": {
+    "importance_score": 0.12891336495284123,
     "layer_idx": 15,
-    "head_idx": 17
+    "head_idx": 6
+  },
+  "mlp_15_51": {
+    "importance_score": 0.12073610034084145,
+    "layer_idx": 15,
+    "head_idx": 51
+  },
+  "mlp_15_57": {
+    "importance_score": 0.11883577392652972,
+    "layer_idx": 15,
+    "head_idx": 57
+  },
+  "mlp_15_34": {
+    "importance_score": 0.11694784584588193,
+    "layer_idx": 15,
+    "head_idx": 34
+  },
+  "mlp_15_11": {
+    "importance_score": 0.11481420533443941,
+    "layer_idx": 15,
+    "head_idx": 11
+  },
+  "mlp_15_61": {
+    "importance_score": 0.11126039205785287,
+    "layer_idx": 15,
+    "head_idx": 61
+  },
+  "mlp_15_35": {
+    "importance_score": 0.11021104218138536,
+    "layer_idx": 15,
+    "head_idx": 35
+  },
+  "mlp_15_9": {
+    "importance_score": 0.10662566951001784,
+    "layer_idx": 15,
+    "head_idx": 9
+  },
+  "mlp_15_43": {
+    "importance_score": 0.10520887810860037,
+    "layer_idx": 15,
+    "head_idx": 43
+  },
+  "mlp_15_59": {
+    "importance_score": 0.10383829867811221,
+    "layer_idx": 15,
+    "head_idx": 59
+  },
+  "mlp_15_7": {
+    "importance_score": 0.10129100467079043,
+    "layer_idx": 15,
+    "head_idx": 7
+  },
+  "mlp_15_38": {
+    "importance_score": 0.09785553912463255,
+    "layer_idx": 15,
+    "head_idx": 38
+  },
+  "mlp_15_50": {
+    "importance_score": 0.09754219941930714,
+    "layer_idx": 15,
+    "head_idx": 50
+  },
+  "mlp_15_42": {
+    "importance_score": 0.09467593010044903,
+    "layer_idx": 15,
+    "head_idx": 42
+  },
+  "mlp_15_36": {
+    "importance_score": 0.09466465888802725,
+    "layer_idx": 15,
+    "head_idx": 36
+  },
+  "mlp_15_49": {
+    "importance_score": 0.0928770445979333,
+    "layer_idx": 15,
+    "head_idx": 49
   },
   "mlp_15_18": {
-    "importance_score": 0.0,
+    "importance_score": 0.08991046148852139,
     "layer_idx": 15,
     "head_idx": 18
   },
-  "mlp_15_19": {
-    "importance_score": 0.0,
+  "mlp_15_37": {
+    "importance_score": 0.08735527763250436,
     "layer_idx": 15,
-    "head_idx": 19
+    "head_idx": 37
   },
   "mlp_15_20": {
-    "importance_score": 0.0,
+    "importance_score": 0.08598018971704748,
     "layer_idx": 15,
     "head_idx": 20
   },
+  "mlp_15_40": {
+    "importance_score": 0.08308574236713494,
+    "layer_idx": 15,
+    "head_idx": 40
+  },
+  "mlp_15_32": {
+    "importance_score": 0.08141422156498529,
+    "layer_idx": 15,
+    "head_idx": 32
+  },
+  "mlp_15_13": {
+    "importance_score": 0.07974946349028872,
+    "layer_idx": 15,
+    "head_idx": 13
+  },
+  "mlp_15_53": {
+    "importance_score": 0.07895033452958468,
+    "layer_idx": 15,
+    "head_idx": 53
+  },
+  "mlp_15_0": {
+    "importance_score": 0.07878915619195326,
+    "layer_idx": 15,
+    "head_idx": 0
+  },
+  "mlp_15_17": {
+    "importance_score": 0.07617198066761645,
+    "layer_idx": 15,
+    "head_idx": 17
+  },
+  "mlp_15_39": {
+    "importance_score": 0.07605025157346125,
+    "layer_idx": 15,
+    "head_idx": 39
+  },
+  "mlp_15_3": {
+    "importance_score": 0.0756422336837929,
+    "layer_idx": 15,
+    "head_idx": 3
+  },
+  "mlp_15_1": {
+    "importance_score": 0.07475857062992551,
+    "layer_idx": 15,
+    "head_idx": 1
+  },
+  "mlp_15_26": {
+    "importance_score": 0.07282330345710628,
+    "layer_idx": 15,
+    "head_idx": 26
+  },
+  "mlp_15_54": {
+    "importance_score": 0.0719745811617464,
+    "layer_idx": 15,
+    "head_idx": 54
+  },
+  "mlp_15_25": {
+    "importance_score": 0.0719441488882076,
+    "layer_idx": 15,
+    "head_idx": 25
+  },
+  "mlp_15_56": {
+    "importance_score": 0.07130056265892408,
+    "layer_idx": 15,
+    "head_idx": 56
+  },
   "mlp_15_21": {
-    "importance_score": 0.0,
+    "importance_score": 0.06980487277055418,
     "layer_idx": 15,
     "head_idx": 21
   },
   "mlp_15_22": {
-    "importance_score": 0.0,
+    "importance_score": 0.06866986167968116,
     "layer_idx": 15,
     "head_idx": 22
   },
-  "mlp_15_23": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 23
-  },
-  "mlp_15_24": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 24
-  },
-  "mlp_15_25": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 25
-  },
-  "mlp_15_26": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 26
-  },
-  "mlp_15_27": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 27
-  },
-  "mlp_15_28": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 28
-  },
-  "mlp_15_29": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 29
-  },
-  "mlp_15_30": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 30
-  },
-  "mlp_15_31": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 31
-  },
-  "mlp_15_32": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 32
-  },
-  "mlp_15_33": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 33
-  },
-  "mlp_15_34": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 34
-  },
-  "mlp_15_35": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 35
-  },
-  "mlp_15_36": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 36
-  },
-  "mlp_15_37": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 37
-  },
-  "mlp_15_38": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 38
-  },
-  "mlp_15_39": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 39
-  },
-  "mlp_15_40": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 40
-  },
-  "mlp_15_41": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 41
-  },
-  "mlp_15_42": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 42
-  },
-  "mlp_15_43": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 43
-  },
-  "mlp_15_44": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 44
-  },
   "mlp_15_45": {
-    "importance_score": 0.0,
+    "importance_score": 0.06835990333808227,
     "layer_idx": 15,
     "head_idx": 45
   },
-  "mlp_15_46": {
-    "importance_score": 0.0,
+  "attn_15_2": {
+    "importance_score": 0.06747285892048836,
     "layer_idx": 15,
-    "head_idx": 46
+    "head_idx": 2
   },
-  "mlp_15_47": {
-    "importance_score": 0.0,
+  "mlp_15_4": {
+    "importance_score": 0.06637278858812284,
     "layer_idx": 15,
-    "head_idx": 47
+    "head_idx": 4
+  },
+  "mlp_15_19": {
+    "importance_score": 0.06610566085372671,
+    "layer_idx": 15,
+    "head_idx": 19
+  },
+  "mlp_15_27": {
+    "importance_score": 0.06539557447115471,
+    "layer_idx": 15,
+    "head_idx": 27
+  },
+  "mlp_15_30": {
+    "importance_score": 0.06455812338821662,
+    "layer_idx": 15,
+    "head_idx": 30
   },
   "mlp_15_48": {
-    "importance_score": 0.0,
+    "importance_score": 0.06369812988043497,
     "layer_idx": 15,
     "head_idx": 48
   },
-  "mlp_15_49": {
-    "importance_score": 0.0,
+  "mlp_15_12": {
+    "importance_score": 0.06243800833168022,
     "layer_idx": 15,
-    "head_idx": 49
-  },
-  "mlp_15_50": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 50
-  },
-  "mlp_15_51": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 51
-  },
-  "mlp_15_52": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 52
-  },
-  "mlp_15_53": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 53
-  },
-  "mlp_15_54": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 54
+    "head_idx": 12
   },
   "mlp_15_55": {
-    "importance_score": 0.0,
+    "importance_score": 0.06108771708355124,
     "layer_idx": 15,
     "head_idx": 55
   },
-  "mlp_15_56": {
-    "importance_score": 0.0,
+  "mlp_15_23": {
+    "importance_score": 0.060444130854267725,
     "layer_idx": 15,
-    "head_idx": 56
+    "head_idx": 23
   },
-  "mlp_15_57": {
-    "importance_score": 0.0,
+  "mlp_15_16": {
+    "importance_score": 0.05696245333718057,
     "layer_idx": 15,
-    "head_idx": 57
+    "head_idx": 16
   },
-  "mlp_15_58": {
-    "importance_score": 0.0,
+  "mlp_15_10": {
+    "importance_score": 0.056723503633838886,
     "layer_idx": 15,
-    "head_idx": 58
-  },
-  "mlp_15_59": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 59
-  },
-  "mlp_15_60": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 60
-  },
-  "mlp_15_61": {
-    "importance_score": 0.0,
-    "layer_idx": 15,
-    "head_idx": 61
+    "head_idx": 10
   },
   "mlp_15_62": {
-    "importance_score": 0.0,
+    "importance_score": 0.056580359236082296,
     "layer_idx": 15,
     "head_idx": 62
   },
+  "mlp_15_44": {
+    "importance_score": 0.056287307713116075,
+    "layer_idx": 15,
+    "head_idx": 44
+  },
+  "mlp_15_47": {
+    "importance_score": 0.055976222250275015,
+    "layer_idx": 15,
+    "head_idx": 47
+  },
+  "mlp_15_28": {
+    "importance_score": 0.05422354871868857,
+    "layer_idx": 15,
+    "head_idx": 28
+  },
+  "mlp_15_14": {
+    "importance_score": 0.05409167553335377,
+    "layer_idx": 15,
+    "head_idx": 14
+  },
+  "mlp_15_41": {
+    "importance_score": 0.05189717047483363,
+    "layer_idx": 15,
+    "head_idx": 41
+  },
+  "mlp_15_33": {
+    "importance_score": 0.0506359218048367,
+    "layer_idx": 15,
+    "head_idx": 33
+  },
   "mlp_15_63": {
-    "importance_score": 0.0,
+    "importance_score": 0.05015745883753223,
     "layer_idx": 15,
     "head_idx": 63
+  },
+  "mlp_15_52": {
+    "importance_score": 0.049691394203891716,
+    "layer_idx": 15,
+    "head_idx": 52
+  },
+  "mlp_15_60": {
+    "importance_score": 0.04871248940506032,
+    "layer_idx": 15,
+    "head_idx": 60
+  },
+  "mlp_15_24": {
+    "importance_score": 0.048365336062469566,
+    "layer_idx": 15,
+    "head_idx": 24
+  },
+  "mlp_15_46": {
+    "importance_score": 0.04788743665578618,
+    "layer_idx": 15,
+    "head_idx": 46
+  },
+  "mlp_15_29": {
+    "importance_score": 0.04608347910768065,
+    "layer_idx": 15,
+    "head_idx": 29
+  },
+  "mlp_15_58": {
+    "importance_score": 0.042893162431696455,
+    "layer_idx": 15,
+    "head_idx": 58
+  },
+  "attn_15_5": {
+    "importance_score": 0.036239202178499935,
+    "layer_idx": 15,
+    "head_idx": 5
+  },
+  "attn_15_0": {
+    "importance_score": 0.029130448504084687,
+    "layer_idx": 15,
+    "head_idx": 0
+  },
+  "attn_15_4": {
+    "importance_score": 0.025186228607238823,
+    "layer_idx": 15,
+    "head_idx": 4
+  },
+  "attn_15_6": {
+    "importance_score": 0.024750173576671294,
+    "layer_idx": 15,
+    "head_idx": 6
+  },
+  "attn_15_7": {
+    "importance_score": 0.011337430794755729,
+    "layer_idx": 15,
+    "head_idx": 7
+  },
+  "attn_15_1": {
+    "importance_score": 0.007220550012623757,
+    "layer_idx": 15,
+    "head_idx": 1
   }
 }

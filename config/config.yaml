@@ -41,7 +41,11 @@ pruning:
     memory_efficient: true
     gradient_accumulation: true
     metric_type: 'WIFN'           # FLAP metric: 'WIFN', 'WIFV', or 'IFV'
-
+    method: "vector_wise"  # Method from paper
+    calibration_percent: 0.1  # Amount of data to use
+    use_mixed_precision: true  # Keep if you want mixed precision
+    memory_efficient: true  # Keep for memory efficiency
+    lambda: 0.05  # Weight for gradient sensitivity term
 
   # Environment configuration
   env:

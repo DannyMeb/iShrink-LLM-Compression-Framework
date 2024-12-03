@@ -112,40 +112,18 @@ class DependencyGraphBuilder:
             raise
             
     def _create_mlp_unit(self, layer_idx: int, group_idx: int, layer: nn.Module) -> PruningUnit:
-        """Create a pruning unit from a group of MLP neurons"""
-        try:
-            # Print full MLP shapes first
-            print(f"\nDebug MLP layer {layer_idx}, group {group_idx}:")
-            print(f"Full gate_proj shape: {layer.mlp.gate_proj.weight.shape}")
-            print(f"Full up_proj shape: {layer.mlp.up_proj.weight.shape}")
-            print(f"Full down_proj shape: {layer.mlp.down_proj.weight.shape}")
-            
-            # Calculate start and end indices for this group
-            start_idx = group_idx * self.mlp_group_size
-            end_idx = min(start_idx + self.mlp_group_size, self.intermediate_size)
-            
-            print(f"Group indices: {start_idx} to {end_idx}")
-            
-            # Get parameters for this group of neurons
-            parameters = {
-                'gate_proj': layer.mlp.gate_proj.weight[start_idx:end_idx, :],
-                'up_proj': layer.mlp.up_proj.weight[start_idx:end_idx, :],
-                'down_proj': layer.mlp.down_proj.weight[:, start_idx:end_idx]
-            }
-            
-            # Print sliced shapes
-            print(f"Sliced shapes:")
-            print(f"gate_proj: {parameters['gate_proj'].shape}")
-            print(f"up_proj: {parameters['up_proj'].shape}")
-            print(f"down_proj: {parameters['down_proj'].shape}")
-            
-            return PruningUnit(
-                id=f"mlp_{layer_idx}_{group_idx}",
-                layer_idx=layer_idx,
-                head_idx=group_idx,
-                parameters=parameters
-            )
-                
-        except AttributeError as e:
-            logger.error(f"Error creating MLP unit: {str(e)}")
-            raise
+        start_idx = group_idx * self.mlp_group_size
+        end_idx = min(start_idx + self.mlp_group_size, self.intermediate_size)
+        
+        parameters = {
+            'gate_proj': layer.mlp.gate_proj.weight.data[start_idx:end_idx, :].requires_grad_(True),
+            'up_proj': layer.mlp.up_proj.weight.data[start_idx:end_idx, :].requires_grad_(True),
+            'down_proj': layer.mlp.down_proj.weight.data[:, start_idx:end_idx].requires_grad_(True)
+        }
+        
+        return PruningUnit(
+            id=f"mlp_{layer_idx}_{group_idx}",
+            layer_idx=layer_idx,
+            head_idx=group_idx,
+            parameters=parameters
+        )
