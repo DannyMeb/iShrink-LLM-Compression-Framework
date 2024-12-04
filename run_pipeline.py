@@ -17,6 +17,7 @@ from src.importance_scorer import ImportanceScorer
 from src.pruning_env import PruningEnvironment
 from src.rl_agent import PPOAgent
 from src.rl_trainer import RLTrainer
+from src.adaptive_pruner import LayerProgressivePruner, PruningResult  # Changed import
 from src.metrics import MetricsTracker
 from src.data import create_mmlu_dataloader
 
@@ -102,45 +103,65 @@ class PruningPipeline:
                 model, tokenizer, eval_dataloader, pruning_units
             )
             
-            # 5. Setup Environment
-            logger.info("Setting up pruning environment...")
-            env = PruningEnvironment(
+            
+            # 5. Run Layer-wise Progressive Pruning
+            logger.info("Starting layer-wise progressive pruning...")
+            pruner = LayerProgressivePruner(
                 model=model,
-                pruning_units=pruning_units,
-                eval_dataloader=eval_dataloader,
-                metrics_tracker=metrics_tracker,
                 config=self.config,
                 device=self.device,
-                initial_metrics=initial_metrics
+                initial_metrics=initial_metrics,
+                metrics_tracker=metrics_tracker,
+                eval_dataloader=eval_dataloader,
+                tokenizer=tokenizer
             )
             
-            # 6. Setup RL Agent
-            logger.info("Setting up RL agent...")
-            agent = self._setup_agent(env)
+            pruning_result = pruner.optimize_pruning(pruning_units)
             
-            # 7. Setup and Run Training
-            logger.info("Setting up RL trainer...")
-            trainer = RLTrainer(
-                agent=agent,
-                env=env,
-                config=self.config,
-                save_dir=self.save_dir
-            )
-            
-            logger.info("Starting RL training...")
-            training_results = trainer.train()
-            
-            # 8. Load Best Model and Evaluate
-            if training_results['best_checkpoint']:
-                logger.info("Loading best checkpoint...")
-                trainer.load_checkpoint(training_results['best_checkpoint'])
-            
-            logger.info("Evaluating final model...")
-            eval_results = trainer.evaluate(num_episodes=5)
-            
-            # 9. Save Final Results
+            # 6. Save Results
             logger.info("Saving final results...")
-            self._save_final_results(model, env, training_results, eval_results)
+            self.save_results(model, pruning_result, initial_metrics)
+            
+
+
+            # 5. Setup Environment
+            # logger.info("Setting up pruning environment...")
+            # env = PruningEnvironment(
+            #     model=model,
+            #     pruning_units=pruning_units,
+            #     eval_dataloader=eval_dataloader,
+            #     metrics_tracker=metrics_tracker,
+            #     config=self.config,
+            #     device=self.device,
+            #     initial_metrics=initial_metrics
+            # )    
+            # # 6. Setup RL Agent
+            # logger.info("Setting up RL agent...")
+            # agent = self._setup_agent(env)
+            
+            # # 7. Setup and Run Training
+            # logger.info("Setting up RL trainer...")
+            # trainer = RLTrainer(
+            #     agent=agent,
+            #     env=env,
+            #     config=self.config,
+            #     save_dir=self.save_dir
+            # )
+            
+            # logger.info("Starting RL training...")
+            # training_results = trainer.train()
+            
+            # # 8. Load Best Model and Evaluate
+            # if training_results['best_checkpoint']:
+            #     logger.info("Loading best checkpoint...")
+            #     trainer.load_checkpoint(training_results['best_checkpoint'])
+            
+            # logger.info("Evaluating final model...")
+            # eval_results = trainer.evaluate(num_episodes=5)
+            
+            # # 9. Save Final Results
+            # logger.info("Saving final results...")
+            # self._save_final_results(model, env, training_results, eval_results)
             
             logger.info("Pruning pipeline completed successfully!")
             
@@ -337,7 +358,44 @@ class PruningPipeline:
             return {}
         with open(path) as f:
             return json.load(f)
+    # In run_pipeline.py, add the save_results method
 
+    def save_results(
+        self,
+        model: torch.nn.Module,
+        pruning_result: PruningResult,
+        initial_metrics
+    ):
+        """Save final model and results"""
+        try:
+            # Save pruned model
+            final_model_dir = self.save_dir / 'final_model'
+            final_model_dir.mkdir(exist_ok=True)
+            model.save_pretrained(final_model_dir)
+            
+            # Create detailed summary
+            summary = {
+                'initial_metrics': vars(initial_metrics),
+                'pruning_results': {
+                    'pruned_units': pruning_result.pruned_units,
+                    'memory_reduction_mb': float(pruning_result.memory_reduction),
+                    'final_accuracy': float(pruning_result.accuracy),
+                    'performance_impact': float(pruning_result.performance_impact),
+                    'layer_statistics': pruning_result.layer_stats
+                },
+                'config': self.config
+            }
+            
+            # Save summary
+            summary_path = self.save_dir / 'pruning_summary.json'
+            with open(summary_path, 'w') as f:
+                json.dump(summary, f, indent=2)
+            
+            logger.info(f"Saved results to {self.save_dir}")
+            
+        except Exception as e:
+            logger.error(f"Error saving results: {str(e)}")
+            raise
 def main():
     parser = argparse.ArgumentParser(description='Run pruning pipeline')
     parser.add_argument('--config', type=str, default='config/config.yaml',

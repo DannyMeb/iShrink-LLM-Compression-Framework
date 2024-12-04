@@ -1,3 +1,5 @@
+#  importance_scorer.py
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,7 +19,7 @@ class ImportanceScorer:
        self.config = config
        self.lambda_term = config.get('lambda', 0.05)
        
-       percent = config.get('calibration_percent', 0.01)
+       percent = config.get('calibration_percent', 0.5)
        total_samples = len(calibration_dataloader.dataset)
        num_samples = int(total_samples * percent)
        

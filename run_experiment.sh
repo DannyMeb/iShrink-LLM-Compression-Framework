@@ -49,10 +49,10 @@ check_requirements() {
     print_success "All required files found!"
 }
 
-# Check if conda is installed
-if ! command -v conda &> /dev/null; then
-    error_exit "conda is not installed. Please install Anaconda or Miniconda first."
-fi
+# # Check if conda is installed
+# if ! command -v conda &> /dev/null; then
+#     error_exit "conda is not installed. Please install Anaconda or Miniconda first."
+# fi
 
 # Configuration
 ENV_NAME="shrinker"
@@ -77,9 +77,9 @@ nvidia-smi
 # print_success "Conda environment created successfully!"
 
 # Activate conda environment
-echo "Activating conda environment..."
-source $(conda info --base)/etc/profile.d/conda.sh
-conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
+# echo "Activating conda environment..."
+# source $(conda info --base)/etc/profile.d/conda.sh
+# conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 
 # Install other requirements
 # echo "Installing other requirements..."

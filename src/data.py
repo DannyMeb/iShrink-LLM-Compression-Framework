@@ -167,11 +167,11 @@ def create_mmlu_dataloader(
         )
         
         # Log subject distribution if available
-        subject_dist = dataset.get_subject_distribution()
-        if len(subject_dist) > 1:  # Only log if multiple subjects
-            logger.info("Subject distribution:")
-            for subject, count in subject_dist.items():
-                logger.info(f"  {subject}: {count} examples")
+        # subject_dist = dataset.get_subject_distribution()
+        # if len(subject_dist) > 1:  # Only log if multiple subjects
+        #     # logger.info("Subject distribution:")
+        #     for subject, count in subject_dist.items():
+        #         logger.info(f"  {subject}: {count} examples")
         
         # Create dataloader
         dataloader = DataLoader(
