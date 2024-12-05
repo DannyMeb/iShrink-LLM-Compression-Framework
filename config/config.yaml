@@ -47,7 +47,7 @@ pruning:
         taylor: 0.6
     
     # Data sampling - reduced samples for initial testing
-    calibration_percent: 0.1  # Reduced from 0.2
+    calibration_percent: 1.0  # Reduced from 0.2
     num_samples: 50          # Reduced from 100
     
     # Performance optimization - more conservative settings

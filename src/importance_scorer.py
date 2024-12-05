@@ -31,7 +31,7 @@ class ImportanceScorer:
         self.grad_accum_steps = self.config.get('gradient_accumulation_steps', 8)
         
         # Prepare calibration data
-        percent = self.config.get('calibration_percent', 0.2)
+        percent = self.config.get('calibration_percent', 1.0)
         self.subset = self._prepare_calibration_data(calibration_dataloader, percent)
         logger.info(f"Using {len(self.subset)} samples for importance scoring with method: {self.method}")
 
@@ -227,51 +227,76 @@ class ImportanceScorer:
             return 0.0
 
     def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
-        """Compute importance scores for a group of pruning units"""
+        """Compute importance scores for all units more efficiently"""
         logger.info(f"Computing importance scores using {self.method} method")
         was_training = self.model.training
         self.model.eval()
         
-        chunk_size = self.config.get('chunk_size', 5)
-        
         try:
-            for i in range(0, len(pruning_units), chunk_size):
-                chunk = pruning_units[i:i + chunk_size]
-                try:
-                    for unit in tqdm(chunk, desc=f"Computing importance scores (chunk {i//chunk_size + 1})"):
-                        importance = self.compute_importance(unit)
-                        unit.importance_score = importance
-                        logger.info(f"Unit {unit.id}: {importance:.6f}")
+            # Initialize importance scores
+            scores_dict = {unit.id: 0.0 for unit in pruning_units}
+            
+            # Process first 5 batches for speed
+            num_batches = min(5, len(self.subset))
+            
+            for batch_idx, batch in enumerate(self.subset[:num_batches]):
+                self.model.zero_grad()
+                
+                # Single forward and backward pass
+                with torch.set_grad_enabled(True):
+                    with torch.amp.autocast('cuda', enabled=self.use_mixed_precision):
+                        outputs = self.model(
+                            input_ids=batch['input_ids'],
+                            attention_mask=batch['attention_mask']
+                        )
                         
-                        if self.config.get('clear_cache', True):
-                            torch.cuda.empty_cache()
-                            
-                except KeyboardInterrupt:
-                    logger.warning("Computation interrupted by user. Saving partial results...")
-                    break
-                except Exception as e:
-                    logger.error(f"Error processing chunk {i//chunk_size + 1}: {str(e)}")
-                    continue
+                        logits = outputs.logits
+                        loss = F.cross_entropy(
+                            logits.view(-1, logits.size(-1)),
+                            batch['input_ids'].view(-1)
+                        )
+                        
+                        loss.backward()
+                
+                # Compute importance for all units using the same gradients
+                for unit in pruning_units:
+                    importance = 0.0
+                    for name, (param, slice_idx) in unit.param_references.items():
+                        if param.grad is not None:
+                            if isinstance(slice_idx, tuple):
+                                grad = param.grad[slice_idx[0], slice_idx[1]]
+                                weight = param.data[slice_idx[0], slice_idx[1]]
+                            else:
+                                grad = param.grad[slice_idx]
+                                weight = param.data[slice_idx]
+                            importance += (weight.abs() * grad.abs()).sum().item()
+                    
+                    scores_dict[unit.id] += importance
+                    
+                    if batch_idx == 0:  # Log only first batch for visibility
+                        logger.info(f"Unit {unit.id}: {importance:.6f}")
+                
+                torch.cuda.empty_cache()
+            
+            # Assign averaged scores to units
+            for unit in pruning_units:
+                unit.importance_score = scores_dict[unit.id] / num_batches
             
             # Normalize scores
-            scores = [unit.importance_score for unit in pruning_units if hasattr(unit, 'importance_score')]
-            if scores:
-                max_score = max(scores)
-                if max_score > 0:
-                    for unit in pruning_units:
-                        if hasattr(unit, 'importance_score'):
-                            unit.importance_score /= max_score
+            max_score = max(unit.importance_score for unit in pruning_units)
+            if max_score > 0:
+                for unit in pruning_units:
+                    unit.importance_score /= max_score
             
             # Sort units by score
-            pruning_units.sort(key=lambda x: getattr(x, 'importance_score', 0.0), reverse=True)
+            pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
             
             if not self.validate_scores(pruning_units):
                 logger.warning("Score validation failed - check results carefully")
             
             logger.info("\nTop 10 importance scores:")
             for unit in pruning_units[:10]:
-                if hasattr(unit, 'importance_score'):
-                    logger.info(f"{unit.id}: {unit.importance_score:.6f}")
+                logger.info(f"{unit.id}: {unit.importance_score:.6f}")
             
             return pruning_units
             
