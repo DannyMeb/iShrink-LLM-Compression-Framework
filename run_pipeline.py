@@ -95,7 +95,8 @@ class PruningPipeline:
             
             # 3. Build Pruning Units
             logger.info("Creating pruning units...")
-            pruning_units = self._create_pruning_units(model)
+            layer_percent = self.config['pruning']['dependency'].get('layer_percentage', 100.0)
+            pruning_units = self._create_pruning_units(model, layer_percent)
             
             # 4. Calculate Importance Scores
             logger.info("Handling importance scores...")
@@ -182,13 +183,13 @@ class PruningPipeline:
         
         return model, tokenizer, eval_dataloader
     
-    def _create_pruning_units(self, model):
+    def _create_pruning_units(self, model, layer_percent):
         """Create pruning units for attention heads"""
         graph_builder = DependencyGraphBuilder(
             model=model,
-            config=self.config['pruning']['dependency']
+            config=self.config['pruning']['dependency'], 
         )
-        pruning_units, _ = graph_builder.build()
+        pruning_units, _ = graph_builder.build(percent=layer_percent)
         return pruning_units
     
     def _handle_importance_scores(self, model, tokenizer, eval_dataloader, pruning_units):

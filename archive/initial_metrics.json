@@ -1,11 +1,11 @@
 {
-  "accuracy": 0.4223776223776224,
-  "latency_ms": 20.619535446166992,
-  "throughput_samples_per_sec": 48.497697856034485,
+  "accuracy": 0.43496503496503497,
+  "latency_ms": 26.43728256225586,
+  "throughput_samples_per_sec": 37.825370200025255,
   "memory_footprint_mb": {
     "gpu_allocated": 2366.26220703125,
-    "gpu_cached": 9146.0,
-    "cpu_memory": 1497.5625
+    "gpu_cached": 18908.0,
+    "cpu_memory": 1399.5078125
   },
   "parameter_count": 1235814400
 }

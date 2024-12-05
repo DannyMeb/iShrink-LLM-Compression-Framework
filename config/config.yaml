@@ -35,20 +35,49 @@ pruning:
     num_heads: 12
     mlp_ratio: 4
     mlp_group_size: 128  # Size of MLP neuron groups
+    layer_percentage: 2.0
   
   # Importance scoring configuration
   importance:
-    num_samples: 100  # Increased for MMLU
-    batch_size: 8
+    # Scoring method selection
+    scoring_method: "taylor"  # Options: "taylor", "mse", "gradient", "combined"
+    weights:
+        mse: 0.2
+        gradient: 0.2
+        taylor: 0.6
+    
+    # Data sampling - reduced samples for initial testing
+    calibration_percent: 0.1  # Reduced from 0.2
+    num_samples: 50          # Reduced from 100
+    
+    # Performance optimization - more conservative settings
+    batch_size_per_gpu: 2    # Reduced from 4
     use_mixed_precision: true
     memory_efficient: true
-    gradient_accumulation: true
-    metric_type: 'WIFN'           # FLAP metric: 'WIFN', 'WIFV', or 'IFV'
-    method: "vector_wise"  # Method from paper
-    calibration_percent: 0.1  # Amount of data to use
-    use_mixed_precision: true  # Keep if you want mixed precision
-    memory_efficient: true  # Keep for memory efficiency
-    lambda: 0.05  # Weight for gradient sensitivity term
+    gradient_accumulation_steps: 8  # Increased from 4
+    chunk_size: 5            # Reduced from 10
+    clear_cache: true
+    
+    # Added memory optimization flags
+    optimize_memory_usage: true
+    empty_cache_between_chunks: true
+    
+    # Logging and validation
+    log_detailed_scores: true
+    validation:
+        min_non_zero_scores: 0.01
+        score_range_check: true
+        numerical_stability_check: true
+    
+    # Fallback options
+    fallback_method: "taylor"
+    allow_method_switching: true
+    
+    # Memory management - added safeguards
+    max_memory_per_gpu: 19000  # MB
+    min_free_memory: 2000      # MB
+    emergency_memory_threshold: 0.95
+
 
   # Environment configuration
   env:
