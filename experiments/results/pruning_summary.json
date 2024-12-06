@@ -33,13 +33,13 @@
   },
   "final_metrics": {
     "accuracy": 0.43566433566433566,
-    "latency": 20.327121019363403,
-    "throughput": 49.195358213659986,
-    "parameter_count": 1185413547,
+    "latency": 20.74544131755829,
+    "throughput": 48.20336114776365,
+    "parameter_count": 1235746816,
     "compute_metrics": {
       "flops": 2370827094,
       "macs": 1185413547,
-      "parameter_count": 1185413547,
+      "parameter_count": 1235746816,
       "active_parameter_count": 1185413547,
       "sparsity": 0.04073105295381152,
       "bandwidth_usage": 0.0,
@@ -47,20 +47,20 @@
       "activation_memory": 2606.27001953125
     },
     "environmental_metrics": {
-      "co2_emissions": 0.9055346488836077,
-      "energy_consumption": 8149.811839952468,
-      "power_usage": 108.91
+      "co2_emissions": 0.8269064591905806,
+      "energy_consumption": 7442.158132715225,
+      "power_usage": 99.19
     },
     "cost_metrics": {
-      "inference_cost_usd": 118.54135888092345,
-      "gpu_time_cost": 2.8232112526893617e-06,
-      "memory_cost": 1.357712181633275e-06,
-      "total_operation_cost": 118.54135470000001
+      "inference_cost_usd": 59.27068161696441,
+      "gpu_time_cost": 2.881311294105318e-06,
+      "memory_cost": 1.385653106673404e-06,
+      "total_operation_cost": 59.27067735000001
     },
     "memory_footprint": {
       "gpu_allocated": 2462.26220703125,
       "gpu_cached": 5044.0,
-      "cpu_memory": 1607.5703125
+      "cpu_memory": 1604.27734375
     }
   },
   "pruning_summary": {
@@ -69,11 +69,10 @@
     "performance_impact": 0.0,
     "computational_savings": {
       "flops_reduction": 99.62528556756008,
-      "latency_reduction": 1.6678257800660174,
-      "throughput_improvement": 1.6961140067295555,
-      "parameter_reduction": 4.078351328484278,
-      "co2_reduction": -1.152092657609917,
-      "cost_reduction": 99.62528555439373
+      "parameter_reduction": 0.005468782367319883,
+      "latency_reduction": -0.3557930296340892,
+      "throughput_improvement": -0.35453163080384725,
+      "cost_reduction": 99.81264277031686
     },
     "layer_statistics": {
       "15": {

@@ -358,37 +358,32 @@ class PruningPipeline:
                     'memory_reduction_mb': float(pruning_result.memory_reduction),
                     'performance_impact': float(pruning_result.performance_impact),
                     'computational_savings': {
-                        'flops_reduction': float(
-                            (initial_metrics.compute_metrics.flops - 
-                            pruning_result.final_metrics.compute_metrics.flops) / 
-                            initial_metrics.compute_metrics.flops * 100
-                        ),
-                        'latency_reduction': float(
-                            (initial_metrics.latency - 
-                            pruning_result.final_metrics.latency) / 
-                            initial_metrics.latency * 100
-                        ),
-                        'throughput_improvement': float(
-                            (pruning_result.final_metrics.throughput - 
-                            initial_metrics.throughput) / 
-                            initial_metrics.throughput * 100
-                        ),
-                        'parameter_reduction': float(
-                            (initial_metrics.parameter_count - 
-                            pruning_result.final_metrics.parameter_count) /
-                            initial_metrics.parameter_count * 100
-                        ),
-                        'co2_reduction': float(
-                            (initial_metrics.environmental_metrics.co2_emissions - 
-                            pruning_result.final_metrics.environmental_metrics.co2_emissions) /
-                            initial_metrics.environmental_metrics.co2_emissions * 100
-                        ),
-                        'cost_reduction': float(
-                            (initial_metrics.cost_metrics.inference_cost_usd - 
-                            pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
-                            initial_metrics.cost_metrics.inference_cost_usd * 100
-                        )
-                    },
+                          'flops_reduction': float(
+                              (initial_metrics.compute_metrics.flops - 
+                              pruning_result.final_metrics.compute_metrics.flops) / 
+                              initial_metrics.compute_metrics.flops * 100
+                          ) if initial_metrics.compute_metrics.flops > 0 else 0.0,
+                          'parameter_reduction': float(
+                              (initial_metrics.parameter_count - 
+                              pruning_result.final_metrics.parameter_count) /
+                              initial_metrics.parameter_count * 100
+                          ) if initial_metrics.parameter_count > 0 else 0.0,
+                          'latency_reduction': float(
+                              (initial_metrics.latency - 
+                              pruning_result.final_metrics.latency) / 
+                              initial_metrics.latency * 100
+                          ) if initial_metrics.latency > 0 else 0.0,
+                          'throughput_improvement': float(
+                              (pruning_result.final_metrics.throughput - 
+                              initial_metrics.throughput) / 
+                              initial_metrics.throughput * 100
+                          ) if initial_metrics.throughput > 0 else 0.0,
+                          'cost_reduction': float(
+                              (initial_metrics.cost_metrics.inference_cost_usd - 
+                              pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
+                              initial_metrics.cost_metrics.inference_cost_usd * 100
+                          ) if initial_metrics.cost_metrics.inference_cost_usd > 0 else 0.0
+                      },
                     'layer_statistics': layer_stats_dict,
                     'batch_statistics': batch_stats_list
                 }

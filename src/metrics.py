@@ -263,34 +263,46 @@ class MetricsTracker:
             model(input_ids=sample_input, attention_mask=sample_mask)
     
     def _calculate_compute_metrics(self, model: nn.Module) -> ComputeMetrics:
-        """Calculate compute-related metrics without using thop.profile"""
-        # Count parameters and calculate sparsity
+        """Calculate compute-related metrics accounting for pruned parameters"""
         total_params = 0
         nonzero_params = 0
         total_flops = 0
         total_macs = 0
         
+        # Debug info
+        logger.debug("Calculating compute metrics:")
+        
         for name, module in model.named_modules():
             if isinstance(module, nn.Linear):
                 # Count parameters
                 weight = module.weight
-                total_params += weight.numel()
-                nonzero_params += torch.count_nonzero(weight).item()
+                weight_params = weight.numel()
+                weight_nonzero = torch.count_nonzero(weight).item()
                 
-                # Estimate FLOPS for linear layers
+                total_params += weight_params
+                nonzero_params += weight_nonzero
+                
+                # Calculate MACs and FLOPs
                 out_features, in_features = weight.shape
-                # Each output requires in_features MAC operations
-                macs_per_output = in_features * (torch.count_nonzero(weight).item() / weight.numel())
-                total_macs += out_features * macs_per_output
-                # Each MAC is 2 FLOPS (multiply + add)
-                total_flops += 2 * out_features * macs_per_output
+                # Each output feature requires in_features MACs
+                layer_macs = out_features * in_features * (weight_nonzero / weight_params)
+                # Each MAC operation is 2 FLOPs (multiply + add)
+                layer_flops = 2 * layer_macs
+                
+                total_macs += layer_macs
+                total_flops += layer_flops
                 
                 if module.bias is not None:
-                    total_params += module.bias.numel()
-                    nonzero_params += torch.count_nonzero(module.bias).item()
-                    total_flops += out_features  # One add per output for bias
+                    bias_params = module.bias.numel()
+                    bias_nonzero = torch.count_nonzero(module.bias).item()
+                    total_params += bias_params
+                    nonzero_params += bias_nonzero
+                    # Add FLOPs for bias addition
+                    total_flops += out_features
+                
+                logger.debug(f"{name}: {layer_flops:,} FLOPs ({weight_nonzero}/{weight_params} non-zero weights)")
         
-        # Measure memory bandwidth and cache performance
+        # Get memory metrics
         bandwidth_usage, cache_hits = self._measure_bandwidth_and_cache(model)
         
         # Measure activation memory
@@ -298,25 +310,27 @@ class MetricsTracker:
         self._run_inference(model)
         activation_memory = torch.cuda.max_memory_allocated() / 1024**2
         
+        sparsity = 1 - (nonzero_params / total_params) if total_params > 0 else 0
+        
+        logger.debug(f"Total FLOPs: {total_flops:,}")
+        logger.debug(f"Total MACs: {total_macs:,}")
+        logger.debug(f"Parameters: {total_params:,} (non-zero: {nonzero_params:,})")
+        logger.debug(f"Sparsity: {sparsity:.4%}")
+        
         return ComputeMetrics(
             flops=int(total_flops),
             macs=int(total_macs),
-            parameter_count=nonzero_params,
+            parameter_count=total_params,
             active_parameter_count=nonzero_params,
-            sparsity=1 - (nonzero_params / total_params),
+            sparsity=sparsity,
             bandwidth_usage=bandwidth_usage,
             cache_hits=cache_hits,
             activation_memory=activation_memory
         )
     
-    def _calculate_cost_metrics(
-        self,
-        compute_metrics: ComputeMetrics,
-        latency: float,
-        memory_footprint: Dict[str, float],
-        power_watts: float
-    ) -> CostMetrics:
-        """Calculate cost-related metrics"""
+    def _calculate_cost_metrics(self, compute_metrics: ComputeMetrics, latency: float, memory_footprint: Dict[str, float], power_watts: float) -> CostMetrics:
+        """Calculate cost-related metrics with corrected calculation"""
+        # Convert time to hours
         time_hours = latency / (1000 * 3600)  # ms to hours
         
         # GPU time cost
@@ -326,9 +340,9 @@ class MetricsTracker:
         memory_gb = memory_footprint['gpu_allocated'] / 1024
         memory_cost = memory_gb * time_hours * self.cost_config['memory_gb_hour_rate']
         
-        # Operation cost
-        million_flops = compute_metrics.flops / 1e6
-        operation_cost = million_flops * self.cost_config['operation_rate']
+        # Operation cost - based on active parameters instead of raw FLOPS
+        million_params = compute_metrics.active_parameter_count / 1e6
+        operation_cost = million_params * self.cost_config['operation_rate']
         
         # Total cost per inference
         inference_cost = gpu_time_cost + memory_cost + operation_cost
