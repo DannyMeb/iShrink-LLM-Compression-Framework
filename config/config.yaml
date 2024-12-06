@@ -27,7 +27,7 @@ pruning:
     compression_target: 0.9
     units_per_step: 10
     max_pruned_heads: 100
-    compression_target: 0.6
+    compression_target: 0.98
   
   # Dependency configuration
   dependency:

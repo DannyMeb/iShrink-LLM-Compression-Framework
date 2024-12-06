@@ -4,26 +4,76 @@
     "latency": 20.671892166137695,
     "throughput": 48.374865346776744,
     "parameter_count": 1235814400,
-    "flops": 632702369792.0,
-    "co2_emissions": 0.8952208749143284,
-    "cost_per_inference": 31635.118493798007,
+    "compute_metrics": {
+      "flops": 632702369792.0,
+      "macs": 1235746816.0,
+      "parameter_count": 1235814400,
+      "active_parameter_count": 1235812711,
+      "sparsity": 1.3667100819958478e-06,
+      "bandwidth_usage": 0.0,
+      "cache_hits": 1.0,
+      "activation_memory": 2509.52783203125
+    },
+    "environmental_metrics": {
+      "co2_emissions": 0.8952208749143284,
+      "energy_consumption": 8056.987874228955,
+      "power_usage": 104.73
+    },
+    "cost_metrics": {
+      "inference_cost_usd": 31635.118493798007,
+      "gpu_time_cost": 2.871096134185791e-06,
+      "memory_cost": 1.3269074756010468e-06,
+      "total_operation_cost": 31635.118489600005
+    },
     "memory_footprint": {
       "gpu_allocated": 2366.26220703125,
       "gpu_cached": 18908.0,
       "cpu_memory": 1526.8984375
     }
   },
-  "pruning_results": {
-    "total_units_pruned": 10,
-    "memory_reduction_mb": 960.0,
-    "final_accuracy": 0.4286713286713287,
-    "latency": 20.647168159484863,
-    "throughput": 48.43279195847599,
+  "final_metrics": {
+    "accuracy": 0.43566433566433566,
+    "latency": 20.64206600189209,
+    "throughput": 48.44476322807699,
     "parameter_count": 1235814400,
+    "compute_metrics": {
+      "flops": 632702369792.0,
+      "macs": 1235746816.0,
+      "parameter_count": 1235814400,
+      "active_parameter_count": 1185481131,
+      "sparsity": 0.04072882546116963,
+      "bandwidth_usage": 0.0,
+      "cache_hits": 1.0,
+      "activation_memory": 2605.52783203125
+    },
+    "environmental_metrics": {
+      "co2_emissions": 0.5506342204809189,
+      "energy_consumption": 4955.70798432827,
+      "power_usage": 67.1
+    },
+    "cost_metrics": {
+      "inference_cost_usd": 31635.118493845708,
+      "gpu_time_cost": 2.8669536113739013e-06,
+      "memory_cost": 1.3787483450386162e-06,
+      "total_operation_cost": 31635.118489600005
+    },
+    "memory_footprint": {
+      "gpu_allocated": 2462.26220703125,
+      "gpu_cached": 19004.0,
+      "cpu_memory": 1593.19921875
+    }
+  },
+  "pruning_summary": {
+    "total_units_pruned": 1,
+    "memory_reduction_mb": 96.0,
+    "performance_impact": 0.0,
     "computational_savings": {
       "flops_reduction": 0.0,
-      "co2_reduction": -7.823635342062814,
-      "cost_reduction": -5.87140095589313e-09
+      "latency_reduction": 0.14428366791920116,
+      "throughput_improvement": 0.14449214648801087,
+      "parameter_reduction": 0.0,
+      "co2_reduction": 38.49180287115021,
+      "cost_reduction": -1.5078552061671035e-10
     },
     "layer_statistics": {
       "15": {
@@ -34,46 +84,22 @@
           "prune_ratio": 0.0
         },
         "mlp_units": {
-          "pruned": 8,
+          "pruned": 1,
           "total": 1024,
-          "remaining": 1016,
-          "prune_ratio": 0.0078125
+          "remaining": 1023,
+          "prune_ratio": 0.0009765625
         },
-        "memory_saved": 768.0
+        "memory_saved": 96.0
       }
     },
     "batch_statistics": [
       {
         "batch_number": 1,
-        "units_pruned": 3,
+        "units_pruned": 1,
         "accuracy": 0.43566433566433566,
         "accuracy_drop": 0.0,
-        "memory_reduction": 288.0,
-        "remaining_memory": 2078.26220703125
-      },
-      {
-        "batch_number": 2,
-        "units_pruned": 3,
-        "accuracy": 0.4286713286713287,
-        "accuracy_drop": 0.006993006993006978,
-        "memory_reduction": 288.0,
-        "remaining_memory": 1790.26220703125
-      },
-      {
-        "batch_number": 3,
-        "units_pruned": 3,
-        "accuracy": 0.4286713286713287,
-        "accuracy_drop": 0.006993006993006978,
-        "memory_reduction": 288.0,
-        "remaining_memory": 1502.26220703125
-      },
-      {
-        "batch_number": 4,
-        "units_pruned": 1,
-        "accuracy": 0.4286713286713287,
-        "accuracy_drop": 0.006993006993006978,
         "memory_reduction": 96.0,
-        "remaining_memory": 1406.26220703125
+        "remaining_memory": 2270.26220703125
       }
     ]
   }

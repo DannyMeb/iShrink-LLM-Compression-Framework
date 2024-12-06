@@ -299,28 +299,59 @@ class PruningPipeline:
             final_model_dir = self.save_dir / 'final_model'
             final_model_dir.mkdir(exist_ok=True)
             model.save_pretrained(final_model_dir)
-            
-            # Comprehensive summary with all metrics
+
+            # Convert layer_stats to dictionary
+            layer_stats_dict = {}
+            for layer_idx, stats in pruning_result.layer_stats.items():
+                layer_stats_dict[layer_idx] = {
+                    'attention_units': {
+                        'pruned': stats.attention_units_pruned,
+                        'total': stats.total_attention_units,
+                        'remaining': stats.total_attention_units - stats.attention_units_pruned,
+                        'prune_ratio': float(stats.attention_units_pruned/stats.total_attention_units)
+                    },
+                    'mlp_units': {
+                        'pruned': stats.mlp_units_pruned,
+                        'total': stats.total_mlp_units,
+                        'remaining': stats.total_mlp_units - stats.mlp_units_pruned,
+                        'prune_ratio': float(stats.mlp_units_pruned/stats.total_mlp_units)
+                    },
+                    'memory_saved': float(stats.memory_saved)
+                }
+
+            # Convert batch_stats to list of dictionaries
+            batch_stats_list = []
+            for batch in pruning_result.batch_stats:
+                batch_stats_list.append({
+                    'batch_number': batch.batch_number,
+                    'units_pruned': batch.units_pruned,
+                    'accuracy': float(batch.accuracy),
+                    'accuracy_drop': float(batch.accuracy_drop),
+                    'memory_reduction': float(batch.memory_reduction),
+                    'remaining_memory': float(batch.remaining_memory)
+                })
+
+            # Create summary with converted data structures
             summary = {
                 'initial_metrics': {
-                    'accuracy': initial_metrics.accuracy,
-                    'latency': initial_metrics.latency,
-                    'throughput': initial_metrics.throughput,
-                    'parameter_count': initial_metrics.parameter_count,
+                    'accuracy': float(initial_metrics.accuracy),
+                    'latency': float(initial_metrics.latency),
+                    'throughput': float(initial_metrics.throughput),
+                    'parameter_count': int(initial_metrics.parameter_count),
                     'compute_metrics': vars(initial_metrics.compute_metrics),
                     'environmental_metrics': vars(initial_metrics.environmental_metrics),
                     'cost_metrics': vars(initial_metrics.cost_metrics),
-                    'memory_footprint': initial_metrics.memory_footprint
+                    'memory_footprint': {k: float(v) for k, v in initial_metrics.memory_footprint.items()}
                 },
                 'final_metrics': {
-                    'final_accuracy': pruning_result.final_metrics.accuracy,
-                    'final_latency': pruning_result.final_metrics.latency,
-                    'final_throughput': pruning_result.final_metrics.throughput,
-                    'final_parameter_count': pruning_result.final_metrics.parameter_count,
-                    'final_compute_metrics': vars(pruning_result.final_metrics.compute_metrics),
-                    'final_environmental_metrics': vars(pruning_result.final_metrics.environmental_metrics),
-                    'final_cost_metrics': vars(pruning_result.final_metrics.cost_metrics),
-                    'final_memory_footprint': pruning_result.final_metrics.memory_footprint
+                    'accuracy': float(pruning_result.final_metrics.accuracy),
+                    'latency': float(pruning_result.final_metrics.latency),
+                    'throughput': float(pruning_result.final_metrics.throughput),
+                    'parameter_count': int(pruning_result.final_metrics.parameter_count),
+                    'compute_metrics': vars(pruning_result.final_metrics.compute_metrics),
+                    'environmental_metrics': vars(pruning_result.final_metrics.environmental_metrics),
+                    'cost_metrics': vars(pruning_result.final_metrics.cost_metrics),
+                    'memory_footprint': {k: float(v) for k, v in pruning_result.final_metrics.memory_footprint.items()}
                 },
                 'pruning_summary': {
                     'total_units_pruned': len(pruning_result.pruned_units),
@@ -358,38 +389,48 @@ class PruningPipeline:
                             initial_metrics.cost_metrics.inference_cost_usd * 100
                         )
                     },
-                    'layer_statistics': pruning_result.layer_stats,
-                    'batch_statistics': pruning_result.batch_stats
+                    'layer_statistics': layer_stats_dict,
+                    'batch_statistics': batch_stats_list
                 }
             }
-            
+
             # Save summary
             summary_path = self.save_dir / 'pruning_summary.json'
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
-            
+
             # Log final results
             logger.info("\n=== Final Pruning Results ===")
             logger.info(f"Total Memory Reduction: {pruning_result.memory_reduction:.2f} MB")
-            logger.info(f"Final Accuracy: {pruning_result.accuracy:.4f}")
+            logger.info(f"Final Accuracy: {pruning_result.final_metrics.accuracy:.4f}")
             logger.info(f"Performance Impact: {pruning_result.performance_impact*100:.2f}%")
             
+            # Log computational savings
+            logger.info("\n=== Computational Savings ===")
+            logger.info(f"FLOPS Reduction: {summary['pruning_summary']['computational_savings']['flops_reduction']:.2f}%")
+            logger.info(f"Latency Reduction: {summary['pruning_summary']['computational_savings']['latency_reduction']:.2f}%")
+            logger.info(f"Throughput Improvement: {summary['pruning_summary']['computational_savings']['throughput_improvement']:.2f}%")
+            logger.info(f"Parameter Reduction: {summary['pruning_summary']['computational_savings']['parameter_reduction']:.2f}%")
+            logger.info(f"CO2 Reduction: {summary['pruning_summary']['computational_savings']['co2_reduction']:.2f}%")
+            logger.info(f"Cost Reduction: {summary['pruning_summary']['computational_savings']['cost_reduction']:.2f}%")
+            
             logger.info("\n=== Layer-wise Pruning Statistics ===")
-            for layer_idx, stats in sorted(pruning_result.layer_stats.items()):
+            for layer_idx, stats in sorted(layer_stats_dict.items()):
                 logger.info(f"\nLayer {layer_idx}:")
-                logger.info(f"  Attention Units: {stats.attention_units_pruned}/{stats.total_attention_units} "
-                          f"({stats.attention_units_pruned/stats.total_attention_units*100:.1f}%)")
-                logger.info(f"  MLP Units: {stats.mlp_units_pruned}/{stats.total_mlp_units} "
-                          f"({stats.mlp_units_pruned/stats.total_mlp_units*100:.1f}%)")
-                logger.info(f"  Memory Saved: {stats.memory_saved:.2f} MB")
+                attn = stats['attention_units']
+                mlp = stats['mlp_units']
+                logger.info(f"  Attention Units: {attn['pruned']}/{attn['total']} ({attn['prune_ratio']*100:.1f}%)")
+                logger.info(f"  MLP Units: {mlp['pruned']}/{mlp['total']} ({mlp['prune_ratio']*100:.1f}%)")
+                logger.info(f"  Memory Saved: {stats['memory_saved']:.2f} MB")
             
             logger.info("\n=== Batch-wise Progress ===")
-            for batch in pruning_result.batch_stats:
-                logger.info(f"\nBatch {batch.batch_number}:")
-                logger.info(f"  Units Pruned: {batch.units_pruned}")
-                logger.info(f"  Accuracy: {batch.accuracy:.4f} (drop: {batch.accuracy_drop:.4f})")
-                logger.info(f"  Memory Reduction: {batch.memory_reduction:.2f} MB")
-            
+            for batch in batch_stats_list:
+                logger.info(f"\nBatch {batch['batch_number']}:")
+                logger.info(f"  Units Pruned: {batch['units_pruned']}")
+                logger.info(f"  Accuracy: {batch['accuracy']:.4f} (drop: {batch['accuracy_drop']:.4f})")
+                logger.info(f"  Memory Reduction: {batch['memory_reduction']:.2f} MB")
+                logger.info(f"  Remaining Memory: {batch['remaining_memory']:.2f} MB")
+
             if self.config['training']['logging']['use_wandb']:
                 wandb.log(summary)
                 
