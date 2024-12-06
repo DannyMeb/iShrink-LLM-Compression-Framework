@@ -50,7 +50,7 @@ class MMLUDataset(Dataset):
                 split=split,
                 cache_dir=cache_dir
             )
-            logger.info(f"Successfully loaded {len(self.dataset)} examples")
+            # logger.info(f"Successfully loaded {len(self.dataset)} examples")
             
             # Validate dataset structure
             self._validate_dataset()

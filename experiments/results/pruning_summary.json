@@ -1,217 +1,26 @@
 {
   "initial_metrics": {
-    "accuracy": 0.43496503496503497,
-    "latency": 26.548147201538086,
-    "throughput": 37.66741205736814,
+    "accuracy": 0.43566433566433566,
+    "flops": 632702369792.0,
+    "co2_emissions": 0.8952208749143284,
+    "cost_per_inference": 31635.118493798007,
     "memory_footprint": {
       "gpu_allocated": 2366.26220703125,
       "gpu_cached": 18908.0,
-      "cpu_memory": 1397.32421875
-    },
-    "parameter_count": 1235814400
-  },
-  "pruning_results": {
-    "pruned_units": [],
-    "memory_reduction_mb": -2365.25390625,
-    "final_accuracy": 0.27412587412587414,
-    "performance_impact": 0.3697749196141479,
-    "layer_statistics": {
-      "steps": 1,
-      "total_pruned": 0,
-      "layer_stats": {
-        "0": {
-          "units_pruned": 0,
-          "accuracy_drops": [],
-          "memory_saved": 0.0,
-          "is_frozen": true
-        }
-      }
+      "cpu_memory": 1526.8984375
     }
   },
-  "config": {
-    "model": {
-      "name": "meta-llama/Llama-3.2-1B-Instruct",
-      "local_path": "models/Llama-3.2-1B-Instruct",
-      "device": "cuda",
-      "precision": "float16",
-      "batch_size": 8,
-      "max_seq_length": 512,
-      "low_cpu_mem_usage": true,
-      "gradient_checkpointing": true,
-      "hidden_size": 768,
-      "num_heads": 12,
-      "mlp_ratio": 4,
-      "tokenizer_kwargs": {
-        "padding": true,
-        "truncation": true,
-        "return_tensors": "pt"
-      }
-    },
-    "pruning": {
-      "targets": {
-        "min_accuracy": 0.4,
-        "min_accuracy_ratio": 0.9,
-        "max_pruned_heads": 100,
-        "compression_target": 0.9,
-        "units_per_step": 10
-      },
-      "dependency": {
-        "hidden_size": 768,
-        "num_heads": 12,
-        "mlp_ratio": 4,
-        "mlp_group_size": 128,
-        "layer_percentage": 2.0
-      },
-      "importance": {
-        "scoring_method": "taylor",
-        "weights": {
-          "mse": 0.2,
-          "gradient": 0.2,
-          "taylor": 0.6
-        },
-        "calibration_percent": 1.0,
-        "num_samples": 50,
-        "batch_size_per_gpu": 2,
-        "use_mixed_precision": true,
-        "memory_efficient": true,
-        "gradient_accumulation_steps": 8,
-        "chunk_size": 5,
-        "clear_cache": true,
-        "optimize_memory_usage": true,
-        "empty_cache_between_chunks": true,
-        "log_detailed_scores": true,
-        "validation": {
-          "min_non_zero_scores": 0.01,
-          "score_range_check": true,
-          "numerical_stability_check": true
-        },
-        "fallback_method": "taylor",
-        "allow_method_switching": true,
-        "max_memory_per_gpu": 19000,
-        "min_free_memory": 2000,
-        "emergency_memory_threshold": 0.95
-      },
-      "env": {
-        "max_steps": 1000,
-        "eval_frequency": 5,
-        "eval_batches": 10,
-        "clear_cache": true,
-        "max_prune_per_step": 5,
-        "reward_weights": {
-          "accuracy": 1.0,
-          "compression": 0.5,
-          "balance": 0.3,
-          "violation_penalty": 2.0
-        },
-        "early_stopping": {
-          "patience": 10,
-          "min_delta": 0.01
-        }
-      }
-    },
-    "rl": {
-      "ppo": {
-        "hidden_dims": [
-          512,
-          256
-        ],
-        "learning_rate": 0.0001,
-        "n_epochs": 1,
-        "batch_size": 32,
-        "clip_ratio": 0.2,
-        "value_coef": 0.5,
-        "entropy_coef": 0.01,
-        "max_grad_norm": 0.5,
-        "gamma": 0.99,
-        "gae_lambda": 0.95,
-        "update_interval": 2048
-      }
-    },
-    "training": {
-      "data": {
-        "dataset": "cais/mmlu",
-        "dataset_config": "all",
-        "split": "validation",
-        "batch_size": 8,
-        "max_seq_length": 512,
-        "eval_batch_size": 4,
-        "prefetch_factor": 2,
-        "eval_split": 0.1,
-        "num_workers": 2,
-        "shuffle": false
-      },
-      "optimization": {
-        "num_episodes": 100,
-        "checkpoint_freq": 10,
-        "gradient_accumulation_steps": 4,
-        "mixed_precision": true,
-        "max_gradient_norm": 1.0,
-        "early_stopping": {
-          "patience": 5,
-          "min_delta": 0.01
-        },
-        "memory_efficient_backprop": true,
-        "offload_optimizer": true,
-        "dynamic_batch_sizing": true
-      },
-      "logging": {
-        "log_freq": 1,
-        "use_wandb": false,
-        "project_name": "llm-pruning-mmlu",
-        "metrics_dir": "experiments/results/metrics",
-        "log_memory_usage": true,
-        "log_dependency_graph": true,
-        "log_importance_scores": true
-      }
-    },
-    "metrics": {
-      "eval": {
-        "num_batches": 50,
-        "compute_perplexity": false,
-        "measure_latency": true,
-        "measure_throughput": true,
-        "measure_memory": true
-      },
-      "thresholds": {
-        "min_accuracy": 0.44,
-        "max_latency_increase": 0.2,
-        "max_memory_usage": 38000
-      },
-      "save": {
-        "dir": "experiments/results/metrics",
-        "save_initial": true,
-        "save_frequency": 10,
-        "format": "json"
-      }
-    },
-    "system": {
-      "seed": 42,
-      "num_workers": 0,
-      "pin_memory": true,
-      "log_level": "INFO",
-      "save_dir": "experiments/results",
-      "checkpoint_dir": "experiments/results/checkpoints",
-      "max_memory_usage": 38000,
-      "memory_monitoring": true,
-      "emergency_memory_recovery": true
-    },
-    "memory": {
-      "gpu_memory_fraction": 0.9,
-      "cleanup_interval": 10,
-      "batch_auto_scaling": true,
-      "min_free_memory": 2000,
-      "monitoring": {
-        "enabled": true,
-        "log_interval": 100,
-        "alert_threshold": 0.95
-      }
-    },
-    "checkpointing": {
-      "save_dir": "experiments/results/checkpoints",
-      "save_frequency": 10,
-      "keep_last_n": 5,
-      "save_metrics": true,
-      "save_importance_scores": true
+  "pruning_results": {
+    "total_units_pruned": 0,
+    "memory_reduction_mb": 0.0,
+    "final_accuracy": 0.24895104895104894,
+    "performance_impact": 0.4285714285714286,
+    "layer_statistics": {},
+    "batch_statistics": [],
+    "computational_savings": {
+      "flops_reduction": 0.0,
+      "co2_reduction": -72.25151400659708,
+      "cost_reduction": -3.858911047491243e-09
     }
   }
 }

@@ -77,9 +77,9 @@ nvidia-smi
 # print_success "Conda environment created successfully!"
 
 # Activate conda environment
-# echo "Activating conda environment..."
-# source $(conda info --base)/etc/profile.d/conda.sh
-# conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
+echo "Activating conda environment..."
+source $(conda info --base)/etc/profile.d/conda.sh
+conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 
 # Install other requirements
 # echo "Installing other requirements..."

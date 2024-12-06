@@ -1,11 +1,16 @@
 # Core Dependencies
 lm-eval
+thop
+codecarbon
+pynvml
+psutil
 torch>=2.0.0
 transformers>=4.30.0
 numpy>=1.24.0
 networkx>=3.0
 PyYAML>=6.0
 accelerate>=0.26.0
+
 
 # Machine Learning & RL
 gym>=0.26.0

@@ -1,11 +1,32 @@
 {
-  "accuracy": 0.43496503496503497,
-  "latency_ms": 26.548147201538086,
-  "throughput_samples_per_sec": 37.66741205736814,
+  "accuracy": 0.43566433566433566,
+  "latency_ms": 20.671892166137695,
+  "throughput_samples_per_sec": 48.374865346776744,
   "memory_footprint_mb": {
     "gpu_allocated": 2366.26220703125,
     "gpu_cached": 18908.0,
-    "cpu_memory": 1397.32421875
+    "cpu_memory": 1526.8984375
   },
-  "parameter_count": 1235814400
+  "parameter_count": 1235814400,
+  "compute_metrics": {
+    "flops": 632702369792.0,
+    "macs": 1235746816.0,
+    "parameter_count": 1235814400,
+    "active_parameter_count": 1235812711,
+    "sparsity": 1.3667100819958478e-06,
+    "bandwidth_usage": 0.0,
+    "cache_hits": 1.0,
+    "activation_memory": 2509.52783203125
+  },
+  "environmental_metrics": {
+    "co2_emissions": 0.8952208749143284,
+    "energy_consumption": 8056.987874228955,
+    "power_usage": 104.73
+  },
+  "cost_metrics": {
+    "inference_cost_usd": 31635.118493798007,
+    "gpu_time_cost": 2.871096134185791e-06,
+    "memory_cost": 1.3269074756010468e-06,
+    "total_operation_cost": 31635.118489600005
+  }
 }

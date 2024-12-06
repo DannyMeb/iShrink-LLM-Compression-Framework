@@ -1,4 +1,7 @@
+#importance_scorer.py
+
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Any, Optional
@@ -227,7 +230,10 @@ class ImportanceScorer:
             return 0.0
 
     def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
-        """Compute importance scores for all units more efficiently"""
+        """
+        Compute importance scores for all units using gradient-based scoring and z-score normalization.
+        Importance is calculated globally across all units to maintain fair comparisons between layers.
+        """
         logger.info(f"Computing importance scores using {self.method} method")
         was_training = self.model.training
         self.model.eval()
@@ -238,7 +244,9 @@ class ImportanceScorer:
             
             # Process first 5 batches for speed
             num_batches = min(5, len(self.subset))
+            logger.info(f"Using {num_batches} batches for importance calculation")
             
+            # Compute raw importance scores
             for batch_idx, batch in enumerate(self.subset[:num_batches]):
                 self.model.zero_grad()
                 
@@ -258,7 +266,7 @@ class ImportanceScorer:
                         
                         loss.backward()
                 
-                # Compute importance for all units using the same gradients
+                # Compute raw importance for all units using the same gradients
                 for unit in pruning_units:
                     importance = 0.0
                     for name, (param, slice_idx) in unit.param_references.items():
@@ -273,30 +281,77 @@ class ImportanceScorer:
                     
                     scores_dict[unit.id] += importance
                     
-                    if batch_idx == 0:  # Log only first batch for visibility
-                        logger.info(f"Unit {unit.id}: {importance:.6f}")
+                    # Log first batch progress
+                    if batch_idx == 0:
+                        logger.debug(f"Unit {unit.id} raw importance: {importance:.6f}")
                 
                 torch.cuda.empty_cache()
+                logger.info(f"Processed batch {batch_idx + 1}/{num_batches}")
             
-            # Assign averaged scores to units
+            # Average scores across batches
             for unit in pruning_units:
                 unit.importance_score = scores_dict[unit.id] / num_batches
             
-            # Normalize scores
-            max_score = max(unit.importance_score for unit in pruning_units)
-            if max_score > 0:
-                for unit in pruning_units:
-                    unit.importance_score /= max_score
+            # Convert to numpy for statistical calculations
+            raw_scores = np.array([unit.importance_score for unit in pruning_units])
             
-            # Sort units by score
+            # Log raw score statistics
+            logger.info("\nRaw Score Statistics:")
+            logger.info(f"Mean: {np.mean(raw_scores):.6f}")
+            logger.info(f"Std: {np.std(raw_scores):.6f}")
+            logger.info(f"Min: {np.min(raw_scores):.6f}")
+            logger.info(f"Max: {np.max(raw_scores):.6f}")
+            
+            # Apply z-score normalization globally
+            mean_score = np.mean(raw_scores)
+            std_score = np.std(raw_scores)
+            
+            if std_score > 0:
+                logger.info("\nApplying z-score normalization...")
+                for unit in pruning_units:
+                    unit.importance_score = (unit.importance_score - mean_score) / std_score
+            else:
+                logger.warning("Zero standard deviation in importance scores - using raw scores")
+            
+            # Sort units by normalized importance (higher z-scores = more important)
             pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
             
+            # Validate scores
             if not self.validate_scores(pruning_units):
                 logger.warning("Score validation failed - check results carefully")
             
-            logger.info("\nTop 10 importance scores:")
+            # Log distribution of normalized scores
+            normalized_scores = np.array([unit.importance_score for unit in pruning_units])
+            logger.info("\nNormalized Score Statistics:")
+            logger.info(f"Mean: {np.mean(normalized_scores):.6f}")
+            logger.info(f"Std: {np.std(normalized_scores):.6f}")
+            logger.info(f"Min: {np.min(normalized_scores):.6f}")
+            logger.info(f"Max: {np.max(normalized_scores):.6f}")
+            
+            # Log top and bottom units
+            logger.info("\nTop 10 most important units:")
             for unit in pruning_units[:10]:
                 logger.info(f"{unit.id}: {unit.importance_score:.6f}")
+            
+            logger.info("\nBottom 10 least important units:")
+            for unit in pruning_units[-10:]:
+                logger.info(f"{unit.id}: {unit.importance_score:.6f}")
+            
+            # Optional: Log layer-wise statistics
+            layer_scores = {}
+            for unit in pruning_units:
+                layer_idx = unit.layer_idx
+                if layer_idx not in layer_scores:
+                    layer_scores[layer_idx] = []
+                layer_scores[layer_idx].append(unit.importance_score)
+            
+            logger.info("\nLayer-wise Score Statistics:")
+            for layer_idx, scores in sorted(layer_scores.items()):
+                scores_array = np.array(scores)
+                logger.info(f"Layer {layer_idx}:")
+                logger.info(f"  Mean: {np.mean(scores_array):.6f}")
+                logger.info(f"  Std: {np.std(scores_array):.6f}")
+                logger.info(f"  Units: {len(scores)}")
             
             return pruning_units
             
@@ -304,6 +359,85 @@ class ImportanceScorer:
             if was_training:
                 self.model.train()
             torch.cuda.empty_cache()
+
+    # def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
+    #     """Compute importance scores for all units more efficiently"""
+    #     logger.info(f"Computing importance scores using {self.method} method")
+    #     was_training = self.model.training
+    #     self.model.eval()
+        
+    #     try:
+    #         # Initialize importance scores
+    #         scores_dict = {unit.id: 0.0 for unit in pruning_units}
+            
+    #         # Process first 5 batches for speed
+    #         num_batches = min(5, len(self.subset))
+            
+    #         for batch_idx, batch in enumerate(self.subset[:num_batches]):
+    #             self.model.zero_grad()
+                
+    #             # Single forward and backward pass
+    #             with torch.set_grad_enabled(True):
+    #                 with torch.amp.autocast('cuda', enabled=self.use_mixed_precision):
+    #                     outputs = self.model(
+    #                         input_ids=batch['input_ids'],
+    #                         attention_mask=batch['attention_mask']
+    #                     )
+                        
+    #                     logits = outputs.logits
+    #                     loss = F.cross_entropy(
+    #                         logits.view(-1, logits.size(-1)),
+    #                         batch['input_ids'].view(-1)
+    #                     )
+                        
+    #                     loss.backward()
+                
+    #             # Compute importance for all units using the same gradients
+    #             for unit in pruning_units:
+    #                 importance = 0.0
+    #                 for name, (param, slice_idx) in unit.param_references.items():
+    #                     if param.grad is not None:
+    #                         if isinstance(slice_idx, tuple):
+    #                             grad = param.grad[slice_idx[0], slice_idx[1]]
+    #                             weight = param.data[slice_idx[0], slice_idx[1]]
+    #                         else:
+    #                             grad = param.grad[slice_idx]
+    #                             weight = param.data[slice_idx]
+    #                         importance += (weight.abs() * grad.abs()).sum().item()
+                    
+    #                 scores_dict[unit.id] += importance
+                    
+    #                 if batch_idx == 0:  # Log only first batch for visibility
+    #                     logger.info(f"Unit {unit.id}: {importance:.6f}")
+                
+    #             torch.cuda.empty_cache()
+            
+    #         # Assign averaged scores to units
+    #         for unit in pruning_units:
+    #             unit.importance_score = scores_dict[unit.id] / num_batches
+            
+    #         # Normalize scores
+    #         max_score = max(unit.importance_score for unit in pruning_units)
+    #         if max_score > 0:
+    #             for unit in pruning_units:
+    #                 unit.importance_score /= max_score
+            
+    #         # Sort units by score
+    #         pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
+            
+    #         if not self.validate_scores(pruning_units):
+    #             logger.warning("Score validation failed - check results carefully")
+            
+    #         logger.info("\nTop 10 importance scores:")
+    #         for unit in pruning_units[:10]:
+    #             logger.info(f"{unit.id}: {unit.importance_score:.6f}")
+            
+    #         return pruning_units
+            
+    #     finally:
+    #         if was_training:
+    #             self.model.train()
+    #         torch.cuda.empty_cache()
 
     def validate_scores(self, pruning_units: List[PruningUnit]) -> bool:
         """Validate computed importance scores"""
