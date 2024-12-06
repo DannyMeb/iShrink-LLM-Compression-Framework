@@ -293,90 +293,73 @@ class PruningPipeline:
     
    
 
-    def save_results(
-        self,
-        model: torch.nn.Module,
-        pruning_result: PruningResult,
-        initial_metrics: ModelMetrics
-    ):
-        """Save final model and comprehensive results with detailed unit statistics"""
+    def save_results(self, model: torch.nn.Module, pruning_result: PruningResult, initial_metrics: ModelMetrics):
         try:
-            # Save pruned model
+            # Save model
             final_model_dir = self.save_dir / 'final_model'
             final_model_dir.mkdir(exist_ok=True)
             model.save_pretrained(final_model_dir)
             
-            # Create detailed layer-wise summary
-            layer_summaries = {}
-            for layer_idx, stats in pruning_result.layer_stats.items():
-                layer_summaries[layer_idx] = {
-                    'attention_units': {
-                        'pruned': stats.attention_units_pruned,
-                        'total': stats.total_attention_units,
-                        'remaining': stats.total_attention_units - stats.attention_units_pruned,
-                        'prune_ratio': stats.attention_units_pruned / stats.total_attention_units
-                    },
-                    'mlp_units': {
-                        'pruned': stats.mlp_units_pruned,
-                        'total': stats.total_mlp_units,
-                        'remaining': stats.total_mlp_units - stats.mlp_units_pruned,
-                        'prune_ratio': stats.mlp_units_pruned / stats.total_mlp_units
-                    },
-                    'memory_saved': stats.memory_saved
-                }
-            
-            # Create batch-wise summary
-            batch_summaries = []
-            for batch in pruning_result.batch_stats:
-                batch_summaries.append({
-                    'batch_number': batch.batch_number,
-                    'units_pruned': batch.units_pruned,
-                    'accuracy': float(batch.accuracy),
-                    'accuracy_drop': float(batch.accuracy_drop),
-                    'memory_reduction': float(batch.memory_reduction),
-                    'remaining_memory': float(batch.remaining_memory)
-                })
-
-            # Create comprehensive summary
+            # Comprehensive summary with all metrics
             summary = {
                 'initial_metrics': {
                     'accuracy': initial_metrics.accuracy,
-                    'latency':initial_metrics.latency,
-                    'throughput':initial_metrics.throughput,
-                    'parameter_count':initial_metrics.parameter_count,
-                    'flops': initial_metrics.compute_metrics.flops,
-                    'co2_emissions': initial_metrics.environmental_metrics.co2_emissions,
-                    'cost_per_inference': initial_metrics.cost_metrics.inference_cost_usd,
+                    'latency': initial_metrics.latency,
+                    'throughput': initial_metrics.throughput,
+                    'parameter_count': initial_metrics.parameter_count,
+                    'compute_metrics': vars(initial_metrics.compute_metrics),
+                    'environmental_metrics': vars(initial_metrics.environmental_metrics),
+                    'cost_metrics': vars(initial_metrics.cost_metrics),
                     'memory_footprint': initial_metrics.memory_footprint
                 },
-                'pruning_results': {
+                'final_metrics': {
+                    'final_accuracy': pruning_result.final_metrics.accuracy,
+                    'final_latency': pruning_result.final_metrics.latency,
+                    'final_throughput': pruning_result.final_metrics.throughput,
+                    'final_parameter_count': pruning_result.final_metrics.parameter_count,
+                    'final_compute_metrics': vars(pruning_result.final_metrics.compute_metrics),
+                    'final_environmental_metrics': vars(pruning_result.final_metrics.environmental_metrics),
+                    'final_cost_metrics': vars(pruning_result.final_metrics.cost_metrics),
+                    'final_memory_footprint': pruning_result.final_metrics.memory_footprint
+                },
+                'pruning_summary': {
                     'total_units_pruned': len(pruning_result.pruned_units),
                     'memory_reduction_mb': float(pruning_result.memory_reduction),
-                    'final_accuracy': float(pruning_result.accuracy),
-                    'latency':float(pruning_result.final_metrics.latency),
-                    'throughput':float(pruning_result.final_metrics.throughput),
-                    'parameter_count':pruning_result.final_metrics.parameter_count,
+                    'performance_impact': float(pruning_result.performance_impact),
                     'computational_savings': {
                         'flops_reduction': float(
                             (initial_metrics.compute_metrics.flops - 
                             pruning_result.final_metrics.compute_metrics.flops) / 
                             initial_metrics.compute_metrics.flops * 100
                         ),
+                        'latency_reduction': float(
+                            (initial_metrics.latency - 
+                            pruning_result.final_metrics.latency) / 
+                            initial_metrics.latency * 100
+                        ),
+                        'throughput_improvement': float(
+                            (pruning_result.final_metrics.throughput - 
+                            initial_metrics.throughput) / 
+                            initial_metrics.throughput * 100
+                        ),
+                        'parameter_reduction': float(
+                            (initial_metrics.parameter_count - 
+                            pruning_result.final_metrics.parameter_count) /
+                            initial_metrics.parameter_count * 100
+                        ),
                         'co2_reduction': float(
                             (initial_metrics.environmental_metrics.co2_emissions - 
-                            pruning_result.final_metrics.environmental_metrics.co2_emissions) / 
+                            pruning_result.final_metrics.environmental_metrics.co2_emissions) /
                             initial_metrics.environmental_metrics.co2_emissions * 100
                         ),
                         'cost_reduction': float(
                             (initial_metrics.cost_metrics.inference_cost_usd - 
-                            pruning_result.final_metrics.cost_metrics.inference_cost_usd) / 
+                            pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
                             initial_metrics.cost_metrics.inference_cost_usd * 100
                         )
- },
-
-                    'layer_statistics': layer_summaries,
-                    'batch_statistics': batch_summaries,
-                    
+                    },
+                    'layer_statistics': pruning_result.layer_stats,
+                    'batch_statistics': pruning_result.batch_stats
                 }
             }
             
