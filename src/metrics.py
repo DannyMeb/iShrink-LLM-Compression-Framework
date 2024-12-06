@@ -13,7 +13,9 @@ import subprocess
 from thop import profile
 import traceback
 import wandb
-
+import torch
+import torch.nn as nn
+from thop import profile
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -174,7 +176,7 @@ class MetricsTracker:
             raise
     
     def _measure_performance(self, model: torch.nn.Module) -> Tuple[float, float]:
-        """Measure model latency and throughput"""
+        """Measure model latency and throughput with proper warmup"""
         model.eval()
         
         # Create sample input
@@ -187,28 +189,33 @@ class MetricsTracker:
             truncation=True
         ).to(self.device)
         
-        # Warmup
+        # Thorough warmup
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
         with torch.no_grad():
-            for _ in range(3):
+            for _ in range(10):
                 _ = model(**inputs)
+                torch.cuda.synchronize()
         
         # Measure
-        num_runs = 10
+        num_runs = 20  # Increased from 10
+        latencies = []
         torch.cuda.synchronize()
-        start_time = time.time()
         
         with torch.no_grad():
             for _ in range(num_runs):
+                start_time = time.time()
                 _ = model(**inputs)
+                torch.cuda.synchronize()
+                latencies.append((time.time() - start_time) * 1000)  # ms
         
-        torch.cuda.synchronize()
-        end_time = time.time()
+        # Remove outliers (optional)
+        latencies = sorted(latencies)[2:-2]  # Remove 2 highest and lowest
         
-        total_time = end_time - start_time
-        latency = (total_time / num_runs) * 1000  # ms
-        throughput = num_runs / total_time  # samples/second
+        avg_latency = sum(latencies) / len(latencies)
+        throughput = 1000 / avg_latency  # samples/second
         
-        return latency, throughput
+        return avg_latency, throughput
     
     def _measure_memory_usage(self, model: torch.nn.Module) -> Dict[str, float]:
         """Measure model memory footprint"""
@@ -255,39 +262,48 @@ class MetricsTracker:
         with torch.no_grad():
             model(input_ids=sample_input, attention_mask=sample_mask)
     
-    def _calculate_compute_metrics(self, model: torch.nn.Module) -> ComputeMetrics:
-        """Calculate compute-related metrics"""
-        sample_input = torch.randint(
-            0, 1000,
-            (1, self.config['model']['max_seq_length']),
-            device=self.device
-        )
-        sample_mask = torch.ones_like(sample_input, device=self.device)
-        
-        # Calculate FLOPs and MACs
-        flops, macs = profile(model, inputs=(sample_input, sample_mask), verbose=False)
-        
-        # Calculate sparsity
+    def _calculate_compute_metrics(self, model: nn.Module) -> ComputeMetrics:
+        """Calculate compute-related metrics without using thop.profile"""
+        # Count parameters and calculate sparsity
         total_params = 0
         nonzero_params = 0
-        for param in model.parameters():
-            total_params += param.numel()
-            nonzero_params += torch.count_nonzero(param).item()
-        sparsity = 1 - (nonzero_params / total_params)
+        total_flops = 0
+        total_macs = 0
         
-        # Measure bandwidth and activation memory
+        for name, module in model.named_modules():
+            if isinstance(module, nn.Linear):
+                # Count parameters
+                weight = module.weight
+                total_params += weight.numel()
+                nonzero_params += torch.count_nonzero(weight).item()
+                
+                # Estimate FLOPS for linear layers
+                out_features, in_features = weight.shape
+                # Each output requires in_features MAC operations
+                macs_per_output = in_features * (torch.count_nonzero(weight).item() / weight.numel())
+                total_macs += out_features * macs_per_output
+                # Each MAC is 2 FLOPS (multiply + add)
+                total_flops += 2 * out_features * macs_per_output
+                
+                if module.bias is not None:
+                    total_params += module.bias.numel()
+                    nonzero_params += torch.count_nonzero(module.bias).item()
+                    total_flops += out_features  # One add per output for bias
+        
+        # Measure memory bandwidth and cache performance
         bandwidth_usage, cache_hits = self._measure_bandwidth_and_cache(model)
         
+        # Measure activation memory
         torch.cuda.reset_peak_memory_stats()
         self._run_inference(model)
         activation_memory = torch.cuda.max_memory_allocated() / 1024**2
         
         return ComputeMetrics(
-            flops=flops,
-            macs=macs,
-            parameter_count=total_params,
+            flops=int(total_flops),
+            macs=int(total_macs),
+            parameter_count=nonzero_params,
             active_parameter_count=nonzero_params,
-            sparsity=sparsity,
+            sparsity=1 - (nonzero_params / total_params),
             bandwidth_usage=bandwidth_usage,
             cache_hits=cache_hits,
             activation_memory=activation_memory

@@ -33,34 +33,34 @@
   },
   "final_metrics": {
     "accuracy": 0.43566433566433566,
-    "latency": 20.64206600189209,
-    "throughput": 48.44476322807699,
-    "parameter_count": 1235814400,
+    "latency": 20.327121019363403,
+    "throughput": 49.195358213659986,
+    "parameter_count": 1185413547,
     "compute_metrics": {
-      "flops": 632702369792.0,
-      "macs": 1235746816.0,
-      "parameter_count": 1235814400,
-      "active_parameter_count": 1185481131,
-      "sparsity": 0.04072882546116963,
+      "flops": 2370827094,
+      "macs": 1185413547,
+      "parameter_count": 1185413547,
+      "active_parameter_count": 1185413547,
+      "sparsity": 0.04073105295381152,
       "bandwidth_usage": 0.0,
       "cache_hits": 1.0,
-      "activation_memory": 2605.52783203125
+      "activation_memory": 2606.27001953125
     },
     "environmental_metrics": {
-      "co2_emissions": 0.5506342204809189,
-      "energy_consumption": 4955.70798432827,
-      "power_usage": 67.1
+      "co2_emissions": 0.9055346488836077,
+      "energy_consumption": 8149.811839952468,
+      "power_usage": 108.91
     },
     "cost_metrics": {
-      "inference_cost_usd": 31635.118493845708,
-      "gpu_time_cost": 2.8669536113739013e-06,
-      "memory_cost": 1.3787483450386162e-06,
-      "total_operation_cost": 31635.118489600005
+      "inference_cost_usd": 118.54135888092345,
+      "gpu_time_cost": 2.8232112526893617e-06,
+      "memory_cost": 1.357712181633275e-06,
+      "total_operation_cost": 118.54135470000001
     },
     "memory_footprint": {
       "gpu_allocated": 2462.26220703125,
-      "gpu_cached": 19004.0,
-      "cpu_memory": 1593.19921875
+      "gpu_cached": 5044.0,
+      "cpu_memory": 1607.5703125
     }
   },
   "pruning_summary": {
@@ -68,12 +68,12 @@
     "memory_reduction_mb": 96.0,
     "performance_impact": 0.0,
     "computational_savings": {
-      "flops_reduction": 0.0,
-      "latency_reduction": 0.14428366791920116,
-      "throughput_improvement": 0.14449214648801087,
-      "parameter_reduction": 0.0,
-      "co2_reduction": 38.49180287115021,
-      "cost_reduction": -1.5078552061671035e-10
+      "flops_reduction": 99.62528556756008,
+      "latency_reduction": 1.6678257800660174,
+      "throughput_improvement": 1.6961140067295555,
+      "parameter_reduction": 4.078351328484278,
+      "co2_reduction": -1.152092657609917,
+      "cost_reduction": 99.62528555439373
     },
     "layer_statistics": {
       "15": {
