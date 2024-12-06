@@ -19,8 +19,8 @@
     "batch_statistics": [],
     "computational_savings": {
       "flops_reduction": 0.0,
-      "co2_reduction": -72.25151400659708,
-      "cost_reduction": -3.858911047491243e-09
+      "co2_reduction": 10.293483975806026,
+      "cost_reduction": -4.342823090471045e-09
     }
   }
 }

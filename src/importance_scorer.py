@@ -360,85 +360,6 @@ class ImportanceScorer:
                 self.model.train()
             torch.cuda.empty_cache()
 
-    # def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
-    #     """Compute importance scores for all units more efficiently"""
-    #     logger.info(f"Computing importance scores using {self.method} method")
-    #     was_training = self.model.training
-    #     self.model.eval()
-        
-    #     try:
-    #         # Initialize importance scores
-    #         scores_dict = {unit.id: 0.0 for unit in pruning_units}
-            
-    #         # Process first 5 batches for speed
-    #         num_batches = min(5, len(self.subset))
-            
-    #         for batch_idx, batch in enumerate(self.subset[:num_batches]):
-    #             self.model.zero_grad()
-                
-    #             # Single forward and backward pass
-    #             with torch.set_grad_enabled(True):
-    #                 with torch.amp.autocast('cuda', enabled=self.use_mixed_precision):
-    #                     outputs = self.model(
-    #                         input_ids=batch['input_ids'],
-    #                         attention_mask=batch['attention_mask']
-    #                     )
-                        
-    #                     logits = outputs.logits
-    #                     loss = F.cross_entropy(
-    #                         logits.view(-1, logits.size(-1)),
-    #                         batch['input_ids'].view(-1)
-    #                     )
-                        
-    #                     loss.backward()
-                
-    #             # Compute importance for all units using the same gradients
-    #             for unit in pruning_units:
-    #                 importance = 0.0
-    #                 for name, (param, slice_idx) in unit.param_references.items():
-    #                     if param.grad is not None:
-    #                         if isinstance(slice_idx, tuple):
-    #                             grad = param.grad[slice_idx[0], slice_idx[1]]
-    #                             weight = param.data[slice_idx[0], slice_idx[1]]
-    #                         else:
-    #                             grad = param.grad[slice_idx]
-    #                             weight = param.data[slice_idx]
-    #                         importance += (weight.abs() * grad.abs()).sum().item()
-                    
-    #                 scores_dict[unit.id] += importance
-                    
-    #                 if batch_idx == 0:  # Log only first batch for visibility
-    #                     logger.info(f"Unit {unit.id}: {importance:.6f}")
-                
-    #             torch.cuda.empty_cache()
-            
-    #         # Assign averaged scores to units
-    #         for unit in pruning_units:
-    #             unit.importance_score = scores_dict[unit.id] / num_batches
-            
-    #         # Normalize scores
-    #         max_score = max(unit.importance_score for unit in pruning_units)
-    #         if max_score > 0:
-    #             for unit in pruning_units:
-    #                 unit.importance_score /= max_score
-            
-    #         # Sort units by score
-    #         pruning_units.sort(key=lambda x: x.importance_score, reverse=True)
-            
-    #         if not self.validate_scores(pruning_units):
-    #             logger.warning("Score validation failed - check results carefully")
-            
-    #         logger.info("\nTop 10 importance scores:")
-    #         for unit in pruning_units[:10]:
-    #             logger.info(f"{unit.id}: {unit.importance_score:.6f}")
-            
-    #         return pruning_units
-            
-    #     finally:
-    #         if was_training:
-    #             self.model.train()
-    #         torch.cuda.empty_cache()
-
     def validate_scores(self, pruning_units: List[PruningUnit]) -> bool:
         """Validate computed importance scores"""
         scores = [unit.importance_score for unit in pruning_units if hasattr(unit, 'importance_score')]
@@ -455,15 +376,15 @@ class ImportanceScorer:
             logger.error("Invalid score type found")
             return False
         
-        if self.config.get('score_range_check', True):
-            if any(s < 0 for s in scores):
-                logger.error("Negative scores found")
-                return False
+        # Remove the negative score check since z-scores can be negative
+        # Instead, check for reasonable z-score range (e.g., within ±10 std devs)
+        if any(abs(s) > 10 for s in scores):
+            logger.warning("Some scores have unusually large magnitudes (>10 std devs)")
         
-        min_non_zero = self.config.get('validation', {}).get('min_non_zero_scores', 0.01)
-        non_zero_ratio = sum(1 for s in scores if s > 0) / len(scores)
-        if non_zero_ratio < min_non_zero:
-            logger.error(f"Too few non-zero scores: {non_zero_ratio:.2%}")
+        # Check if we have a reasonable distribution of scores
+        non_zero = sum(1 for s in scores if abs(s) > 1e-6)  # Count scores significantly different from zero
+        if non_zero / len(scores) < 0.1:  # At least 10% should be significant
+            logger.error(f"Too few significant scores: {non_zero/len(scores):.2%}")
             return False
         
         return True
