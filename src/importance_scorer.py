@@ -231,7 +231,7 @@ class ImportanceScorer:
 
     def compute_group_importances(self, pruning_units: List[PruningUnit]) -> List[PruningUnit]:
         """
-        Compute importance scores for all units using gradient-based scoring and z-score normalization.
+        Compute importance scores for all units using taylor scoring and z-score normalization.
         Importance is calculated globally across all units to maintain fair comparisons between layers.
         """
         logger.info(f"Computing importance scores using {self.method} method")
