@@ -14,50 +14,66 @@
     }
   },
   "pruning_results": {
-    "total_units_pruned": 2,
-    "memory_reduction_mb": 40.0,
-    "final_accuracy": 0.4167832167832168,
-    "latency": 21.368718147277832,
-    "throughput": 46.797378911911494,
+    "total_units_pruned": 10,
+    "memory_reduction_mb": 960.0,
+    "final_accuracy": 0.4286713286713287,
+    "latency": 20.647168159484863,
+    "throughput": 48.43279195847599,
     "parameter_count": 1235814400,
     "computational_savings": {
       "flops_reduction": 0.0,
-      "co2_reduction": -52.76341246429273,
-      "cost_reduction": -4.854576175657457e-09
+      "co2_reduction": -7.823635342062814,
+      "cost_reduction": -5.87140095589313e-09
     },
     "layer_statistics": {
       "15": {
         "attention_units": {
-          "pruned": 2,
-          "total": 8,
-          "remaining": 6,
-          "prune_ratio": 0.25
-        },
-        "mlp_units": {
           "pruned": 0,
-          "total": 64,
-          "remaining": 64,
+          "total": 8,
+          "remaining": 8,
           "prune_ratio": 0.0
         },
-        "memory_saved": 40.0
+        "mlp_units": {
+          "pruned": 8,
+          "total": 1024,
+          "remaining": 1016,
+          "prune_ratio": 0.0078125
+        },
+        "memory_saved": 768.0
       }
     },
     "batch_statistics": [
       {
         "batch_number": 1,
-        "units_pruned": 1,
-        "accuracy": 0.4167832167832168,
-        "accuracy_drop": 0.018881118881118875,
-        "memory_reduction": 20.0,
-        "remaining_memory": 2346.26220703125
+        "units_pruned": 3,
+        "accuracy": 0.43566433566433566,
+        "accuracy_drop": 0.0,
+        "memory_reduction": 288.0,
+        "remaining_memory": 2078.26220703125
       },
       {
         "batch_number": 2,
+        "units_pruned": 3,
+        "accuracy": 0.4286713286713287,
+        "accuracy_drop": 0.006993006993006978,
+        "memory_reduction": 288.0,
+        "remaining_memory": 1790.26220703125
+      },
+      {
+        "batch_number": 3,
+        "units_pruned": 3,
+        "accuracy": 0.4286713286713287,
+        "accuracy_drop": 0.006993006993006978,
+        "memory_reduction": 288.0,
+        "remaining_memory": 1502.26220703125
+      },
+      {
+        "batch_number": 4,
         "units_pruned": 1,
-        "accuracy": 0.4167832167832168,
-        "accuracy_drop": 0.018881118881118875,
-        "memory_reduction": 20.0,
-        "remaining_memory": 2326.26220703125
+        "accuracy": 0.4286713286713287,
+        "accuracy_drop": 0.006993006993006978,
+        "memory_reduction": 96.0,
+        "remaining_memory": 1406.26220703125
       }
     ]
   }

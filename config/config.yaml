@@ -27,14 +27,14 @@ pruning:
     compression_target: 0.9
     units_per_step: 10
     max_pruned_heads: 100
-    compression_target: 0.99
+    compression_target: 0.6
   
   # Dependency configuration
   dependency:
     hidden_size: 768
     num_heads: 12
     mlp_ratio: 4
-    mlp_group_size: 128  # Size of MLP neuron groups
+    mlp_group_size: 8  # Size of MLP neuron groups
     layer_percentage: 100
   
   # Importance scoring configuration
