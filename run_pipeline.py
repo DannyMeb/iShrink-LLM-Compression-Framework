@@ -341,6 +341,9 @@ class PruningPipeline:
             summary = {
                 'initial_metrics': {
                     'accuracy': initial_metrics.accuracy,
+                    'latency':initial_metrics.latency,
+                    'throughput':initial_metrics.throughput,
+                    'parameter_count':initial_metrics.parameter_count,
                     'flops': initial_metrics.compute_metrics.flops,
                     'co2_emissions': initial_metrics.environmental_metrics.co2_emissions,
                     'cost_per_inference': initial_metrics.cost_metrics.inference_cost_usd,
@@ -350,9 +353,9 @@ class PruningPipeline:
                     'total_units_pruned': len(pruning_result.pruned_units),
                     'memory_reduction_mb': float(pruning_result.memory_reduction),
                     'final_accuracy': float(pruning_result.accuracy),
-                    'performance_impact': float(pruning_result.performance_impact),
-                    'layer_statistics': layer_summaries,
-                    'batch_statistics': batch_summaries,
+                    'latency':float(pruning_result.final_metrics.latency),
+                    'throughput':float(pruning_result.final_metrics.throughput),
+                    'parameter_count':pruning_result.final_metrics.parameter_count,
                     'computational_savings': {
                         'flops_reduction': float(
                             (initial_metrics.compute_metrics.flops - 
@@ -369,7 +372,11 @@ class PruningPipeline:
                             pruning_result.final_metrics.cost_metrics.inference_cost_usd) / 
                             initial_metrics.cost_metrics.inference_cost_usd * 100
                         )
-                    }
+ },
+
+                    'layer_statistics': layer_summaries,
+                    'batch_statistics': batch_summaries,
+                    
                 }
             }
             

@@ -107,7 +107,7 @@ class MetricsTracker:
         device: torch.device,
         tokenizer: Any,
         config: Dict,
-        use_wandb: bool = False
+        use_wandb: bool = True
     ):
         """Initialize metrics tracker"""
         self.save_dir = save_dir
@@ -383,17 +383,17 @@ class MetricsTracker:
             # Log to wandb if enabled
             if self.use_wandb:
                 wandb.log({
-                    'accuracy': accuracy,
-                    'latency_ms': latency,
-                    'throughput': throughput,
-                    'flops': compute_metrics.flops,
-                    'sparsity': compute_metrics.sparsity,
-                    'power_watts': energy_metrics['power_watts'],
-                    'co2_emissions': energy_metrics['co2_grams'],
-                    'cost_per_inference': cost_metrics.inference_cost_usd,
-                    'gpu_memory_mb': memory_stats['gpu_allocated']
-                })
-            
+                        'accuracy': accuracy,
+                        'latency_ms': latency,
+                        'throughput': throughput,
+                        'flops': compute_metrics.flops,
+                        'sparsity': compute_metrics.sparsity,
+                        'power_watts': energy_metrics['power_watts'],
+                        'co2_emissions': energy_metrics['co2_grams'],
+                        'cost_per_inference': cost_metrics.inference_cost_usd,
+                        'gpu_memory_mb': memory_stats['gpu_allocated']
+                    })
+                
             return metrics
             
         except Exception as e:

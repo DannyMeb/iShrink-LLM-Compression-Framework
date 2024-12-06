@@ -1,6 +1,9 @@
 {
   "initial_metrics": {
     "accuracy": 0.43566433566433566,
+    "latency": 20.671892166137695,
+    "throughput": 48.374865346776744,
+    "parameter_count": 1235814400,
     "flops": 632702369792.0,
     "co2_emissions": 0.8952208749143284,
     "cost_per_inference": 31635.118493798007,
@@ -11,16 +14,51 @@
     }
   },
   "pruning_results": {
-    "total_units_pruned": 0,
-    "memory_reduction_mb": 0.0,
-    "final_accuracy": 0.24895104895104894,
-    "performance_impact": 0.4285714285714286,
-    "layer_statistics": {},
-    "batch_statistics": [],
+    "total_units_pruned": 2,
+    "memory_reduction_mb": 40.0,
+    "final_accuracy": 0.4167832167832168,
+    "latency": 21.368718147277832,
+    "throughput": 46.797378911911494,
+    "parameter_count": 1235814400,
     "computational_savings": {
       "flops_reduction": 0.0,
-      "co2_reduction": 10.293483975806026,
-      "cost_reduction": -4.342823090471045e-09
-    }
+      "co2_reduction": -52.76341246429273,
+      "cost_reduction": -4.854576175657457e-09
+    },
+    "layer_statistics": {
+      "15": {
+        "attention_units": {
+          "pruned": 2,
+          "total": 8,
+          "remaining": 6,
+          "prune_ratio": 0.25
+        },
+        "mlp_units": {
+          "pruned": 0,
+          "total": 64,
+          "remaining": 64,
+          "prune_ratio": 0.0
+        },
+        "memory_saved": 40.0
+      }
+    },
+    "batch_statistics": [
+      {
+        "batch_number": 1,
+        "units_pruned": 1,
+        "accuracy": 0.4167832167832168,
+        "accuracy_drop": 0.018881118881118875,
+        "memory_reduction": 20.0,
+        "remaining_memory": 2346.26220703125
+      },
+      {
+        "batch_number": 2,
+        "units_pruned": 1,
+        "accuracy": 0.4167832167832168,
+        "accuracy_drop": 0.018881118881118875,
+        "memory_reduction": 20.0,
+        "remaining_memory": 2326.26220703125
+      }
+    ]
   }
 }
