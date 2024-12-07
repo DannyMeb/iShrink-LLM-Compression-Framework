@@ -49,6 +49,12 @@ check_requirements() {
     print_success "All required files found!"
 }
 
+
+# Set WandB API Key (replace 'your_api_key' with the actual key)
+export WANDB_API_KEY="110550b358904e57dc28c9f18c684814e825f8e0"
+if [ -z "$WANDB_API_KEY" ]; then
+    error_exit "WANDB_API_KEY is not set. Please set it in the script or as an environment variable."
+fi
 # # Check if conda is installed
 # if ! command -v conda &> /dev/null; then
 #     error_exit "conda is not installed. Please install Anaconda or Miniconda first."
@@ -77,9 +83,9 @@ nvidia-smi
 # print_success "Conda environment created successfully!"
 
 # Activate conda environment
-echo "Activating conda environment..."
-source $(conda info --base)/etc/profile.d/conda.sh
-conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
+# echo "Activating conda environment..."
+# source $(conda info --base)/etc/profile.d/conda.sh
+# conda activate $ENV_NAME || error_exit "Failed to activate conda environment"
 
 # Install other requirements
 # echo "Installing other requirements..."
@@ -113,7 +119,6 @@ monitor_gpu() {
     done
 }
 
-export HF_TOKEN=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
 
 # Start GPU monitoring in background
 echo "Starting GPU monitoring..."
@@ -155,8 +160,8 @@ else
     error_exit "Experiment failed. Check experiments/results/experiment.log for details."
 fi
 
-# Deactivate conda environment
-conda deactivate
+# # Deactivate conda environment
+# conda deactivate
 
 
 print_success "All done!"

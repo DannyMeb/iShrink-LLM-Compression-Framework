@@ -22,13 +22,20 @@ logger = logging.getLogger(__name__)
 class ComputeMetrics:
     """Stores compute-related metrics"""
     flops: int                  # Total FLOPs
-    macs: int                   # Multiply-accumulate operations
+    macs: int                  # Multiply-accumulate operations
     parameter_count: int        # Total parameters
     active_parameter_count: int # Non-zero parameters
     sparsity: float            # Parameter sparsity ratio
     bandwidth_usage: float      # Memory bandwidth usage in GB/s
     cache_hits: float          # Cache hit ratio
     activation_memory: float    # Peak activation memory in MB
+    attention_params: int       # Total attention parameters
+    attention_nonzero: int     # Non-zero attention parameters
+    attention_sparsity: float  # Attention sparsity ratio
+    mlp_params: int            # Total MLP parameters
+    mlp_nonzero: int          # Non-zero MLP parameters
+    mlp_sparsity: float       # MLP sparsity ratio
+    embedding_params: int      # Embedding parameters
 
 @dataclass
 class EnvironmentalMetrics:
@@ -36,6 +43,7 @@ class EnvironmentalMetrics:
     co2_emissions: float       # CO2 emissions in grams
     energy_consumption: float  # Energy consumption in joules
     power_usage: float        # Average power usage in watts
+
 
 @dataclass
 class CostMetrics:
@@ -47,15 +55,33 @@ class CostMetrics:
 
 @dataclass
 class ModelMetrics:
-    """Stores comprehensive model metrics"""
+    """Stores comprehensive model metrics."""
     accuracy: float
     latency: float  # ms
     throughput: float  # samples/second
-    memory_footprint: Dict[str, float]  # Memory stats in MB
+    memory_footprint: Dict[str, float] 
+    flops: int
+    macs: int
     parameter_count: int
+    active_parameter_count: int
+    sparsity: float
+    bandwidth_usage: float
+    cache_hits: float
+    activation_memory_mb: float
+    attention_params: int
+    attention_nonzero: int
+    attention_sparsity: float
+    mlp_params: int
+    mlp_nonzero: int
+    mlp_sparsity: float
+    embedding_params: int
+    power_watts: float
+    co2_emissions: float
+    cost_per_inference: float
+    gpu_memory_mb: float
     compute_metrics: ComputeMetrics
-    environmental_metrics: EnvironmentalMetrics
     cost_metrics: CostMetrics
+
 
 class GPUPowerMetrics:
     """Handles GPU power and energy measurements"""
@@ -120,6 +146,11 @@ class MetricsTracker:
         self.metrics_dir = save_dir / 'metrics'
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
         
+        # Initialize WandB
+        project_name="LLM compression"
+        experiment_name="Gentra"
+        wandb.init(project=project_name, name=experiment_name)
+
         # Initialize power metrics
         self.power_metrics = GPUPowerMetrics()
         
@@ -262,72 +293,117 @@ class MetricsTracker:
         with torch.no_grad():
             model(input_ids=sample_input, attention_mask=sample_mask)
     
+    
     def _calculate_compute_metrics(self, model: nn.Module) -> ComputeMetrics:
-        """Calculate compute-related metrics accounting for pruned parameters"""
-        total_params = 0
-        nonzero_params = 0
+        """Calculate compute-related metrics accounting for pruned parameters."""
+        config = model.config
+        
+        # Core architecture parameters
+        hidden_size = config.hidden_size
+        num_layers = config.num_hidden_layers
+        num_attention_heads = config.num_attention_heads
+        num_kv_heads = config.num_key_value_heads
+        head_dim = config.head_dim
+        intermediate_size = config.intermediate_size
+        vocab_size = config.vocab_size
+        max_seq_length = self.config['model']['max_seq_length']
+        
+        # Log configuration
+        logger.info(f"\nModel Configuration:")
+        logger.info(f"hidden_size: {hidden_size}")
+        logger.info(f"num_layers: {num_layers}")
+        logger.info(f"num_attention_heads: {num_attention_heads}")
+        logger.info(f"num_key_value_heads: {num_kv_heads}")
+        logger.info(f"head_dim: {head_dim}")
+        logger.info(f"intermediate_size: {intermediate_size}")
+        logger.info(f"vocab_size: {vocab_size}")
+
+        # Embedding parameters
+        embedding_params = vocab_size * hidden_size
+        embedding_nonzero = torch.count_nonzero(model.model.embed_tokens.weight).item()
+
+        # Per-layer calculations
+        attention_params_per_layer = (
+            hidden_size * hidden_size +       # Q projection
+            2 * hidden_size * (hidden_size // 4) +  # K, V projections (grouped)
+            hidden_size * hidden_size         # Output projection
+        )
+        mlp_params_per_layer = 3 * hidden_size * intermediate_size
+        total_attention_params = attention_params_per_layer * num_layers
+        total_mlp_params = mlp_params_per_layer * num_layers
+        total_params = embedding_params + total_attention_params + total_mlp_params
+        
+        total_attention_nonzero = 0
+        total_mlp_nonzero = 0
         total_flops = 0
-        total_macs = 0
-        
-        # Debug info
-        logger.debug("Calculating compute metrics:")
-        
-        for name, module in model.named_modules():
-            if isinstance(module, nn.Linear):
-                # Count parameters
-                weight = module.weight
-                weight_params = weight.numel()
-                weight_nonzero = torch.count_nonzero(weight).item()
-                
-                total_params += weight_params
-                nonzero_params += weight_nonzero
-                
-                # Calculate MACs and FLOPs
-                out_features, in_features = weight.shape
-                # Each output feature requires in_features MACs
-                layer_macs = out_features * in_features * (weight_nonzero / weight_params)
-                # Each MAC operation is 2 FLOPs (multiply + add)
-                layer_flops = 2 * layer_macs
-                
-                total_macs += layer_macs
-                total_flops += layer_flops
-                
-                if module.bias is not None:
-                    bias_params = module.bias.numel()
-                    bias_nonzero = torch.count_nonzero(module.bias).item()
-                    total_params += bias_params
-                    nonzero_params += bias_nonzero
-                    # Add FLOPs for bias addition
-                    total_flops += out_features
-                
-                logger.debug(f"{name}: {layer_flops:,} FLOPs ({weight_nonzero}/{weight_params} non-zero weights)")
-        
-        # Get memory metrics
+
+        # Process each layer
+        for layer in model.model.layers:
+            # Count nonzeros
+            attention_nonzero = sum(torch.count_nonzero(p).item() for p in layer.self_attn.parameters())
+            mlp_nonzero = sum(torch.count_nonzero(p).item() for p in layer.mlp.parameters())
+            
+            total_attention_nonzero += attention_nonzero
+            total_mlp_nonzero += mlp_nonzero
+            
+            # Ratios
+            attn_ratio = attention_nonzero / attention_params_per_layer
+            mlp_ratio = mlp_nonzero / mlp_params_per_layer
+            
+            # FLOPS calculation
+            q_proj_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
+            kv_proj_flops = 2 * max_seq_length * hidden_size * (hidden_size // 4) * attn_ratio
+            attn_scores_flops = num_attention_heads * max_seq_length * max_seq_length * head_dim
+            attn_softmax_flops = num_attention_heads * max_seq_length * max_seq_length
+            attn_output_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
+            
+            mlp1_flops = 2 * max_seq_length * hidden_size * intermediate_size * mlp_ratio
+            mlp2_flops = max_seq_length * intermediate_size * hidden_size * mlp_ratio
+            
+            ln_flops = 4 * max_seq_length * hidden_size
+
+            layer_flops = (
+                q_proj_flops + kv_proj_flops + attn_scores_flops +
+                attn_softmax_flops + attn_output_flops + mlp1_flops +
+                mlp2_flops + ln_flops
+            )
+            total_flops += layer_flops
+
+        # Add embedding lookup FLOPS
+        total_flops += max_seq_length
+
+        # Count nonzero parameters
+        nonzero_params = embedding_nonzero + total_attention_nonzero + total_mlp_nonzero
+
+        # Calculate sparsity
+        sparsity = 1 - (nonzero_params / total_params) if total_params > 0 else 0.0
+
+        # Measure bandwidth and cache performance
         bandwidth_usage, cache_hits = self._measure_bandwidth_and_cache(model)
-        
+
         # Measure activation memory
         torch.cuda.reset_peak_memory_stats()
         self._run_inference(model)
         activation_memory = torch.cuda.max_memory_allocated() / 1024**2
-        
-        sparsity = 1 - (nonzero_params / total_params) if total_params > 0 else 0
-        
-        logger.debug(f"Total FLOPs: {total_flops:,}")
-        logger.debug(f"Total MACs: {total_macs:,}")
-        logger.debug(f"Parameters: {total_params:,} (non-zero: {nonzero_params:,})")
-        logger.debug(f"Sparsity: {sparsity:.4%}")
-        
+
         return ComputeMetrics(
             flops=int(total_flops),
-            macs=int(total_macs),
-            parameter_count=total_params,
-            active_parameter_count=nonzero_params,
+            macs=int(total_flops // 2),  # FLOPs divided by 2 for MACs
+            parameter_count=int(total_params),
+            active_parameter_count=int(nonzero_params),
             sparsity=sparsity,
             bandwidth_usage=bandwidth_usage,
             cache_hits=cache_hits,
-            activation_memory=activation_memory
+            activation_memory=activation_memory,
+            attention_params=int(total_attention_params),
+            attention_nonzero=int(total_attention_nonzero),
+            attention_sparsity=float(1 - (total_attention_nonzero / total_attention_params)) if total_attention_params > 0 else 0,
+            mlp_params=int(total_mlp_params),
+            mlp_nonzero=int(total_mlp_nonzero),
+            mlp_sparsity=float(1 - (total_mlp_nonzero / total_mlp_params)) if total_mlp_params > 0 else 0,
+            embedding_params=int(embedding_params)
         )
-    
+
     def _calculate_cost_metrics(self, compute_metrics: ComputeMetrics, latency: float, memory_footprint: Dict[str, float], power_watts: float) -> CostMetrics:
         """Calculate cost-related metrics with corrected calculation"""
         # Convert time to hours
@@ -355,7 +431,7 @@ class MetricsTracker:
         )
     
     def evaluate_model(self, model: torch.nn.Module, tokenizer, verbose: bool = False) -> ModelMetrics:
-        """Comprehensive model evaluation with detailed logging"""
+        """Comprehensive model evaluation with detailed logging."""
         try:
             logger.info("Starting model evaluation...")
             start_time = time.time()
@@ -380,13 +456,6 @@ class MetricsTracker:
             duration_ms = (time.time() - start_time) * 1000
             energy_metrics = self.power_metrics.measure_energy_consumption(duration_ms)
             
-            # Create environmental metrics
-            environmental_metrics = EnvironmentalMetrics(
-                co2_emissions=energy_metrics['co2_grams'],
-                energy_consumption=energy_metrics['energy_joules'],
-                power_usage=energy_metrics['power_watts']
-            )
-            
             # Calculate cost metrics
             cost_metrics = self._calculate_cost_metrics(
                 compute_metrics=compute_metrics,
@@ -395,130 +464,188 @@ class MetricsTracker:
                 power_watts=energy_metrics['power_watts']
             )
             
-            # Create final metrics object
+            # Create and return the final metrics object
             metrics = ModelMetrics(
                 accuracy=accuracy,
                 latency=latency,
                 throughput=throughput,
                 memory_footprint=memory_stats,
+                flops=compute_metrics.flops,
+                macs=compute_metrics.macs,
                 parameter_count=compute_metrics.parameter_count,
+                active_parameter_count=compute_metrics.active_parameter_count,
+                sparsity=compute_metrics.sparsity,
+                bandwidth_usage=compute_metrics.bandwidth_usage,
+                cache_hits=compute_metrics.cache_hits,
+                activation_memory_mb=compute_metrics.activation_memory,
+                attention_params=compute_metrics.attention_params,
+                attention_nonzero=compute_metrics.attention_nonzero,
+                attention_sparsity=compute_metrics.attention_sparsity,
+                mlp_params=compute_metrics.mlp_params,
+                mlp_nonzero=compute_metrics.mlp_nonzero,
+                mlp_sparsity=compute_metrics.mlp_sparsity,
+                embedding_params=compute_metrics.embedding_params,
+                power_watts=energy_metrics['power_watts'],
+                co2_emissions=energy_metrics['co2_grams'],
+                cost_per_inference=cost_metrics.inference_cost_usd,
+                gpu_memory_mb=memory_stats['gpu_allocated'],
                 compute_metrics=compute_metrics,
-                environmental_metrics=environmental_metrics,
-                cost_metrics=cost_metrics
+                cost_metrics=cost_metrics 
             )
             
             if verbose:
-               self._log_metrics(metrics)
+                self._log_metrics(metrics)
             
             # Log to wandb if enabled
             if self.use_wandb:
-                wandb.log({
-                        'accuracy': accuracy,
-                        'latency_ms': latency,
-                        'throughput': throughput,
-                        'flops': compute_metrics.flops,
-                        'sparsity': compute_metrics.sparsity,
-                        'power_watts': energy_metrics['power_watts'],
-                        'co2_emissions': energy_metrics['co2_grams'],
-                        'cost_per_inference': cost_metrics.inference_cost_usd,
-                        'gpu_memory_mb': memory_stats['gpu_allocated']
-                    })
-                
+                wandb.log(vars(metrics))
+            
             return metrics
             
         except Exception as e:
             logger.error(f"Error during model evaluation: {str(e)}")
             logger.error(traceback.format_exc())
             raise
+
     
     def save_metrics(self, metrics: ModelMetrics, filename: str):
-        """Save metrics to file"""
-        metrics_dict = {
-            'accuracy': metrics.accuracy,
-            'latency_ms': metrics.latency,
-            'throughput_samples_per_sec': metrics.throughput,
-            'memory_footprint_mb': metrics.memory_footprint,
-            'parameter_count': metrics.parameter_count,
-            'compute_metrics': vars(metrics.compute_metrics),
-            'environmental_metrics': vars(metrics.environmental_metrics),
-            'cost_metrics': vars(metrics.cost_metrics)
-        }
-        
-        save_path = self.metrics_dir / filename
-        with open(save_path, 'w') as f:
-            json.dump(metrics_dict, f, indent=2)
-        
-        if self.use_wandb:
-            import wandb
+        """Save metrics to a JSON file and log to WandB."""
+        try:
+            # Convert the ModelMetrics object into a dictionary for saving
+            metrics_dict = {
+                'accuracy': metrics.accuracy,
+                'latency_ms': metrics.latency,
+                'throughput': metrics.throughput,
+                'memory_footprint': metrics.memory_footprint,
+                'flops': metrics.flops,
+                'macs': metrics.macs,
+                'parameter_count': metrics.parameter_count,
+                'active_parameter_count': metrics.active_parameter_count,
+                'sparsity': metrics.sparsity,
+                'bandwidth_usage': metrics.bandwidth_usage,
+                'cache_hits': metrics.cache_hits,
+                'activation_memory_mb': metrics.activation_memory_mb,
+                'attention_params': metrics.attention_params,
+                'attention_nonzero': metrics.attention_nonzero,
+                'attention_sparsity': metrics.attention_sparsity,
+                'mlp_params': metrics.mlp_params,
+                'mlp_nonzero': metrics.mlp_nonzero,
+                'mlp_sparsity': metrics.mlp_sparsity,
+                'embedding_params': metrics.embedding_params,
+                'power_watts': metrics.power_watts,
+                'co2_emissions': metrics.co2_emissions,
+                'cost_per_inference': metrics.cost_per_inference,
+                'gpu_memory_mb': metrics.gpu_memory_mb,
+                'compute_metrics': vars(metrics.compute_metrics),
+                'cost_metrics': vars(metrics.cost_metrics)
+            }
+
+            # Save the dictionary as a JSON file
+            save_path = self.metrics_dir / filename
+            with open(save_path, 'w') as f:
+                json.dump(metrics_dict, f, indent=2)
+            
+            logger.info(f"Metrics successfully saved to {save_path}")
+
+            # Log metrics to WandB
             wandb.log(metrics_dict)
+
+        except Exception as e:
+            logger.error(f"Error saving metrics: {str(e)}")
+            raise
+
     
     def load_metrics(self, filename: str) -> ModelMetrics:
-        """Load metrics from file"""
+        """Load metrics from a JSON file."""
         metrics_path = self.metrics_dir / filename
         try:
             with open(metrics_path) as f:
                 metrics_dict = json.load(f)
-            
-            compute_metrics = ComputeMetrics(**metrics_dict['compute_metrics'])
-            environmental_metrics = EnvironmentalMetrics(**metrics_dict['environmental_metrics'])
-            cost_metrics = CostMetrics(**metrics_dict['cost_metrics'])
-            
-            return ModelMetrics(
-                accuracy=metrics_dict['accuracy'],
-                latency=metrics_dict['latency_ms'],
-                throughput=metrics_dict['throughput_samples_per_sec'],
-                memory_footprint=metrics_dict['memory_footprint_mb'],
-                parameter_count=metrics_dict['parameter_count'],
+
+            # Ensure all nested metrics exist; use empty defaults if missing
+            compute_metrics_dict = metrics_dict.get('compute_metrics', {})
+            cost_metrics_dict = metrics_dict.get('cost_metrics', {})
+
+            compute_metrics = ComputeMetrics(**compute_metrics_dict)
+            cost_metrics = CostMetrics(**cost_metrics_dict)
+
+            # Create ModelMetrics object with fallbacks for missing attributes
+            metrics = ModelMetrics(
+                accuracy=metrics_dict.get('accuracy', 0.0),
+                latency=metrics_dict.get('latency_ms', 0.0),
+                throughput=metrics_dict.get('throughput', 0.0),
+                memory_footprint=metrics_dict.get('memory_footprint', {}),
+                flops=metrics_dict.get('flops', 0),
+                macs=metrics_dict.get('macs', 0),
+                parameter_count=metrics_dict.get('parameter_count', 0),
+                active_parameter_count=metrics_dict.get('active_parameter_count', 0),
+                sparsity=metrics_dict.get('sparsity', 0.0),
+                bandwidth_usage=metrics_dict.get('bandwidth_usage', 0.0),
+                cache_hits=metrics_dict.get('cache_hits', 0.0),
+                activation_memory_mb=metrics_dict.get('activation_memory_mb', 0.0),
+                attention_params=metrics_dict.get('attention_params', 0),
+                attention_nonzero=metrics_dict.get('attention_nonzero', 0),
+                attention_sparsity=metrics_dict.get('attention_sparsity', 0.0),
+                mlp_params=metrics_dict.get('mlp_params', 0),
+                mlp_nonzero=metrics_dict.get('mlp_nonzero', 0),
+                mlp_sparsity=metrics_dict.get('mlp_sparsity', 0.0),
+                embedding_params=metrics_dict.get('embedding_params', 0),
+                power_watts=metrics_dict.get('power_watts', 0.0),
+                co2_emissions=metrics_dict.get('co2_emissions', 0.0),
+                cost_per_inference=metrics_dict.get('cost_per_inference', 0.0),
+                gpu_memory_mb=metrics_dict.get('gpu_memory_mb', 0.0),
                 compute_metrics=compute_metrics,
-                environmental_metrics=environmental_metrics,
                 cost_metrics=cost_metrics
             )
-            
+
+            # Log metrics to WandB
+            wandb.log(metrics_dict)
+
+            return metrics
+
         except Exception as e:
             logger.error(f"Failed to load metrics from {metrics_path}: {str(e)}")
             raise
 
+
     def _log_metrics(self, metrics: ModelMetrics, prefix: str = ""):
-        """Log all available metrics in a structured format"""
+        """Log all available metrics in a structured format."""
         logger.info(f"\n{'='*20} {prefix} Model Metrics {'='*20}")
         
-        # Basic Performance Metrics
+        # Log basic metrics
         logger.info("\n=== Basic Performance ===")
         logger.info(f"Accuracy: {metrics.accuracy:.4f}")
         logger.info(f"Latency: {metrics.latency:.2f} ms")
         logger.info(f"Throughput: {metrics.throughput:.2f} samples/second")
         
-        # Memory Metrics
-        logger.info("\n=== Memory Usage ===")
-        for key, value in metrics.memory_footprint.items():
-            logger.info(f"{key}: {value:.2f} MB")
-        
-        # Compute Metrics
+        # Log compute-related metrics
         logger.info("\n=== Compute Statistics ===")
-        compute = metrics.compute_metrics
-        logger.info(f"Total FLOPs: {compute.flops/1e9:.2f}G")
-        logger.info(f"MACs: {compute.macs/1e9:.2f}G")
-        logger.info(f"Total Parameters: {compute.parameter_count:,}")
-        logger.info(f"Active Parameters: {compute.active_parameter_count:,}")
-        logger.info(f"Model Sparsity: {compute.sparsity*100:.2f}%")
-        logger.info(f"Memory Bandwidth Usage: {compute.bandwidth_usage:.2f} GB/s")
-        logger.info(f"Cache Hit Ratio: {compute.cache_hits*100:.2f}%")
-        logger.info(f"Peak Activation Memory: {compute.activation_memory:.2f} MB")
+        logger.info(f"FLOPs: {metrics.flops:,}")
+        logger.info(f"MACs: {metrics.macs:,}")
+        logger.info(f"Parameters: {metrics.parameter_count:,}")
+        logger.info(f"Active Parameters: {metrics.active_parameter_count:,}")
+        logger.info(f"Sparsity: {metrics.sparsity * 100:.2f}%")
+        logger.info(f"Bandwidth Usage: {metrics.bandwidth_usage:.2f} GB/s")
+        logger.info(f"Cache Hits: {metrics.cache_hits:.2f}")
+        logger.info(f"Activation Memory: {metrics.activation_memory_mb:.2f} MB")
         
-        # Environmental Impact
+        # Log component-level metrics
+        logger.info(f"Attention Params: {metrics.attention_params:,}")
+        logger.info(f"Attention Nonzero Params: {metrics.attention_nonzero:,}")
+        logger.info(f"Attention Sparsity: {metrics.attention_sparsity * 100:.2f}%")
+        logger.info(f"MLP Params: {metrics.mlp_params:,}")
+        logger.info(f"MLP Nonzero Params: {metrics.mlp_nonzero:,}")
+        logger.info(f"MLP Sparsity: {metrics.mlp_sparsity * 100:.2f}%")
+        logger.info(f"Embedding Params: {metrics.embedding_params:,}")
+        
+        # Log environmental and cost metrics
         logger.info("\n=== Environmental Impact ===")
-        env = metrics.environmental_metrics
-        logger.info(f"CO2 Emissions: {env.co2_emissions:.4f}g")
-        logger.info(f"Energy Consumption: {env.energy_consumption:.2f} joules")
-        logger.info(f"Power Usage: {env.power_usage:.2f} watts")
+        logger.info(f"CO2 Emissions: {metrics.co2_emissions:.2f} g")
+        logger.info(f"Energy Consumption: {metrics.power_watts:.2f} W")
         
-        # Cost Analysis
         logger.info("\n=== Cost Analysis ===")
-        cost = metrics.cost_metrics
-        logger.info(f"Cost per Inference: ${cost.inference_cost_usd:.6f}")
-        logger.info(f"GPU Time Cost: ${cost.gpu_time_cost:.6f}")
-        logger.info(f"Memory Cost: ${cost.memory_cost:.6f}")
-        logger.info(f"Operation Cost: ${cost.total_operation_cost:.6f}")
+        logger.info(f"Cost per Inference: ${metrics.cost_per_inference:.6f}")
         
         logger.info("\n" + "="*60)
+
 

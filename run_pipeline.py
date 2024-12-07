@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Tuple
 import wandb
 from dataclasses import dataclass
+import torch.nn as nn
 
 from src.model_loader import ModelLoader
 from src.dependency_graph import DependencyGraphBuilder
@@ -113,6 +114,8 @@ class PruningPipeline:
             logger.error(f"Error setting up model and data: {str(e)}")
             raise
     
+    
+
     def _handle_initial_evaluation(self, model: torch.nn.Module, tokenizer: Any) -> Tuple[ModelMetrics, MetricsTracker]:
         metrics_tracker = self._setup_metrics_tracker(tokenizer)
         initial_metrics_path = self.save_dir / 'metrics' / 'initial_metrics.json'
@@ -246,150 +249,106 @@ class PruningPipeline:
         logger.info(f"Successfully loaded importance scores for {len(pruning_units)} units")
         return pruning_units
 
-    def log_detailed_metrics(self, metrics: ModelMetrics, prefix: str = ""):
-        """Log all available metrics in a structured format"""
-        logger.info(f"\n{'='*20} {prefix} Model Metrics {'='*20}")
-        
-        # Basic Performance Metrics
-        logger.info("\n=== Basic Performance ===")
-        logger.info(f"Accuracy: {metrics.accuracy:.4f}")
-        logger.info(f"Latency: {metrics.latency:.2f} ms")
-        logger.info(f"Throughput: {metrics.throughput:.2f} samples/second")
-        
-        # Memory Metrics
-        logger.info("\n=== Memory Usage ===")
-        for key, value in metrics.memory_footprint.items():
-            logger.info(f"{key}: {value:.2f} MB")
-        
-        # Compute Metrics
-        logger.info("\n=== Compute Statistics ===")
-        compute = metrics.compute_metrics
-        logger.info(f"Total FLOPs: {compute.flops/1e9:.2f}G")
-        logger.info(f"MACs: {compute.macs/1e9:.2f}G")
-        logger.info(f"Total Parameters: {compute.parameter_count:,}")
-        logger.info(f"Active Parameters: {compute.active_parameter_count:,}")
-        logger.info(f"Model Sparsity: {compute.sparsity*100:.2f}%")
-        logger.info(f"Memory Bandwidth Usage: {compute.bandwidth_usage:.2f} GB/s")
-        logger.info(f"Cache Hit Ratio: {compute.cache_hits*100:.2f}%")
-        logger.info(f"Peak Activation Memory: {compute.activation_memory:.2f} MB")
-        
-        # Environmental Impact
-        logger.info("\n=== Environmental Impact ===")
-        env = metrics.environmental_metrics
-        logger.info(f"CO2 Emissions: {env.co2_emissions:.4f}g")
-        logger.info(f"Energy Consumption: {env.energy_consumption:.2f} joules")
-        logger.info(f"Power Usage: {env.power_usage:.2f} watts")
-        
-        # Cost Analysis
-        logger.info("\n=== Cost Analysis ===")
-        cost = metrics.cost_metrics
-        logger.info(f"Cost per Inference: ${cost.inference_cost_usd:.6f}")
-        logger.info(f"GPU Time Cost: ${cost.gpu_time_cost:.6f}")
-        logger.info(f"Memory Cost: ${cost.memory_cost:.6f}")
-        logger.info(f"Operation Cost: ${cost.total_operation_cost:.6f}")
-        logger.info(f"Total Cost: ${cost.total_cost:.6f}")
-        
-        logger.info("\n" + "="*60)
-    
    
 
     def save_results(self, model: torch.nn.Module, pruning_result: PruningResult, initial_metrics: ModelMetrics):
         try:
-            # Save model
+            # Save the final model
             final_model_dir = self.save_dir / 'final_model'
             final_model_dir.mkdir(exist_ok=True)
             model.save_pretrained(final_model_dir)
 
-            # Convert layer_stats to dictionary
-            layer_stats_dict = {}
-            for layer_idx, stats in pruning_result.layer_stats.items():
-                layer_stats_dict[layer_idx] = {
+            # Convert layer statistics to dictionary
+            layer_stats_dict = {
+                layer_idx: {
                     'attention_units': {
                         'pruned': stats.attention_units_pruned,
                         'total': stats.total_attention_units,
                         'remaining': stats.total_attention_units - stats.attention_units_pruned,
-                        'prune_ratio': float(stats.attention_units_pruned/stats.total_attention_units)
+                        'prune_ratio': float(stats.attention_units_pruned / stats.total_attention_units)
                     },
                     'mlp_units': {
                         'pruned': stats.mlp_units_pruned,
                         'total': stats.total_mlp_units,
                         'remaining': stats.total_mlp_units - stats.mlp_units_pruned,
-                        'prune_ratio': float(stats.mlp_units_pruned/stats.total_mlp_units)
+                        'prune_ratio': float(stats.mlp_units_pruned / stats.total_mlp_units)
                     },
                     'memory_saved': float(stats.memory_saved)
                 }
+                for layer_idx, stats in pruning_result.layer_stats.items()
+            }
 
-            # Convert batch_stats to list of dictionaries
-            batch_stats_list = []
-            for batch in pruning_result.batch_stats:
-                batch_stats_list.append({
+            # Convert batch statistics to a list of dictionaries
+            batch_stats_list = [
+                {
                     'batch_number': batch.batch_number,
                     'units_pruned': batch.units_pruned,
                     'accuracy': float(batch.accuracy),
                     'accuracy_drop': float(batch.accuracy_drop),
                     'memory_reduction': float(batch.memory_reduction),
                     'remaining_memory': float(batch.remaining_memory)
-                })
+                }
+                for batch in pruning_result.batch_stats
+            ]
 
-            # Create summary with converted data structures
+            # Calculate computational savings
+            computational_savings = {
+                'flops_reduction': float(
+                    (initial_metrics.flops - pruning_result.final_metrics.flops) / initial_metrics.flops * 100
+                ) if initial_metrics.flops > 0 else 0.0,
+                'active_parameter_reduction': float(
+                    (initial_metrics.active_parameter_count - pruning_result.final_metrics.active_parameter_count) /
+                    initial_metrics.active_parameter_count * 100
+                ) if initial_metrics.active_parameter_count > 0 else 0.0,
+                'latency_reduction': float(
+                    (initial_metrics.latency - pruning_result.final_metrics.latency) / initial_metrics.latency * 100
+                ) if initial_metrics.latency > 0 else 0.0,
+                'throughput_improvement': float(
+                    (pruning_result.final_metrics.throughput - initial_metrics.throughput) / initial_metrics.throughput * 100
+                ) if initial_metrics.throughput > 0 else 0.0,
+                'cost_reduction': float(
+                    (initial_metrics.cost_metrics.inference_cost_usd - pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
+                    initial_metrics.cost_metrics.inference_cost_usd * 100
+                ) if initial_metrics.cost_metrics.inference_cost_usd > 0 else 0.0,
+                'co2_reduction': float(
+                    (initial_metrics.co2_emissions - pruning_result.final_metrics.co2_emissions) /
+                    initial_metrics.co2_emissions * 100
+                ) if initial_metrics.co2_emissions > 0 else 0.0
+            }
+
+            # Create summary
             summary = {
                 'initial_metrics': {
-                    'accuracy': float(initial_metrics.accuracy),
-                    'latency': float(initial_metrics.latency),
-                    'throughput': float(initial_metrics.throughput),
-                    'parameter_count': int(initial_metrics.parameter_count),
+                    'accuracy': initial_metrics.accuracy,
+                    'latency': initial_metrics.latency,
+                    'throughput': initial_metrics.throughput,
+                    'parameter_count': initial_metrics.parameter_count,
+                    'active_parameter_count': initial_metrics.active_parameter_count,
                     'compute_metrics': vars(initial_metrics.compute_metrics),
-                    'environmental_metrics': vars(initial_metrics.environmental_metrics),
                     'cost_metrics': vars(initial_metrics.cost_metrics),
-                    'memory_footprint': {k: float(v) for k, v in initial_metrics.memory_footprint.items()}
+                    'memory_footprint': initial_metrics.memory_footprint
                 },
                 'final_metrics': {
-                    'accuracy': float(pruning_result.final_metrics.accuracy),
-                    'latency': float(pruning_result.final_metrics.latency),
-                    'throughput': float(pruning_result.final_metrics.throughput),
-                    'parameter_count': int(pruning_result.final_metrics.parameter_count),
+                    'accuracy': pruning_result.final_metrics.accuracy,
+                    'latency': pruning_result.final_metrics.latency,
+                    'throughput': pruning_result.final_metrics.throughput,
+                    'parameter_count': pruning_result.final_metrics.parameter_count,
+                    'active_parameter_count': pruning_result.final_metrics.active_parameter_count,
                     'compute_metrics': vars(pruning_result.final_metrics.compute_metrics),
-                    'environmental_metrics': vars(pruning_result.final_metrics.environmental_metrics),
                     'cost_metrics': vars(pruning_result.final_metrics.cost_metrics),
-                    'memory_footprint': {k: float(v) for k, v in pruning_result.final_metrics.memory_footprint.items()}
+                    'memory_footprint': pruning_result.final_metrics.memory_footprint
                 },
                 'pruning_summary': {
                     'total_units_pruned': len(pruning_result.pruned_units),
-                    'memory_reduction_mb': float(pruning_result.memory_reduction),
-                    'performance_impact': float(pruning_result.performance_impact),
-                    'computational_savings': {
-                          'flops_reduction': float(
-                              (initial_metrics.compute_metrics.flops - 
-                              pruning_result.final_metrics.compute_metrics.flops) / 
-                              initial_metrics.compute_metrics.flops * 100
-                          ) if initial_metrics.compute_metrics.flops > 0 else 0.0,
-                          'parameter_reduction': float(
-                              (initial_metrics.parameter_count - 
-                              pruning_result.final_metrics.parameter_count) /
-                              initial_metrics.parameter_count * 100
-                          ) if initial_metrics.parameter_count > 0 else 0.0,
-                          'latency_reduction': float(
-                              (initial_metrics.latency - 
-                              pruning_result.final_metrics.latency) / 
-                              initial_metrics.latency * 100
-                          ) if initial_metrics.latency > 0 else 0.0,
-                          'throughput_improvement': float(
-                              (pruning_result.final_metrics.throughput - 
-                              initial_metrics.throughput) / 
-                              initial_metrics.throughput * 100
-                          ) if initial_metrics.throughput > 0 else 0.0,
-                          'cost_reduction': float(
-                              (initial_metrics.cost_metrics.inference_cost_usd - 
-                              pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
-                              initial_metrics.cost_metrics.inference_cost_usd * 100
-                          ) if initial_metrics.cost_metrics.inference_cost_usd > 0 else 0.0
-                      },
+                    'memory_reduction_mb': pruning_result.memory_reduction,
+                    'performance_impact': pruning_result.performance_impact,
+                    'computational_savings': computational_savings,
                     'layer_statistics': layer_stats_dict,
                     'batch_statistics': batch_stats_list
                 }
             }
 
-            # Save summary
+            # Save summary to a JSON file
             summary_path = self.save_dir / 'pruning_summary.json'
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
@@ -398,48 +357,209 @@ class PruningPipeline:
             logger.info("\n=== Final Pruning Results ===")
             logger.info(f"Total Memory Reduction: {pruning_result.memory_reduction:.2f} MB")
             logger.info(f"Final Accuracy: {pruning_result.final_metrics.accuracy:.4f}")
-            logger.info(f"Performance Impact: {pruning_result.performance_impact*100:.2f}%")
-            
-            # Log computational savings
+            logger.info(f"Performance Impact: {pruning_result.performance_impact * 100:.2f}%")
             logger.info("\n=== Computational Savings ===")
-            logger.info(f"FLOPS Reduction: {summary['pruning_summary']['computational_savings']['flops_reduction']:.2f}%")
-            logger.info(f"Latency Reduction: {summary['pruning_summary']['computational_savings']['latency_reduction']:.2f}%")
-            logger.info(f"Throughput Improvement: {summary['pruning_summary']['computational_savings']['throughput_improvement']:.2f}%")
-            logger.info(f"Parameter Reduction: {summary['pruning_summary']['computational_savings']['parameter_reduction']:.2f}%")
-            logger.info(f"CO2 Reduction: {summary['pruning_summary']['computational_savings']['co2_reduction']:.2f}%")
-            logger.info(f"Cost Reduction: {summary['pruning_summary']['computational_savings']['cost_reduction']:.2f}%")
-            
-            logger.info("\n=== Layer-wise Pruning Statistics ===")
-            for layer_idx, stats in sorted(layer_stats_dict.items()):
-                logger.info(f"\nLayer {layer_idx}:")
-                attn = stats['attention_units']
-                mlp = stats['mlp_units']
-                logger.info(f"  Attention Units: {attn['pruned']}/{attn['total']} ({attn['prune_ratio']*100:.1f}%)")
-                logger.info(f"  MLP Units: {mlp['pruned']}/{mlp['total']} ({mlp['prune_ratio']*100:.1f}%)")
-                logger.info(f"  Memory Saved: {stats['memory_saved']:.2f} MB")
-            
-            logger.info("\n=== Batch-wise Progress ===")
-            for batch in batch_stats_list:
-                logger.info(f"\nBatch {batch['batch_number']}:")
-                logger.info(f"  Units Pruned: {batch['units_pruned']}")
-                logger.info(f"  Accuracy: {batch['accuracy']:.4f} (drop: {batch['accuracy_drop']:.4f})")
-                logger.info(f"  Memory Reduction: {batch['memory_reduction']:.2f} MB")
-                logger.info(f"  Remaining Memory: {batch['remaining_memory']:.2f} MB")
+            for key, value in computational_savings.items():
+                logger.info(f"{key.replace('_', ' ').title()}: {value:.2f}%")
 
-            if self.config['training']['logging']['use_wandb']:
-                wandb.log(summary)
-                
+            # Log statistics
+            logger.info("\n=== Layer-Wise Statistics ===")
+            for layer_idx, stats in sorted(layer_stats_dict.items()):
+                logger.info(
+                    f"Layer {layer_idx}: "
+                    f"Attention Units Pruned {stats['attention_units']['pruned']} / {stats['attention_units']['total']} "
+                    f"({stats['attention_units']['prune_ratio'] * 100:.2f}%), "
+                    f"MLP Units Pruned {stats['mlp_units']['pruned']} / {stats['mlp_units']['total']} "
+                    f"({stats['mlp_units']['prune_ratio'] * 100:.2f}%)"
+                )
+
+            # Log batch progress
+            logger.info("\n=== Batch-Wise Statistics ===")
+            for batch in batch_stats_list:
+                logger.info(
+                    f"Batch {batch['batch_number']}: "
+                    f"Units Pruned: {batch['units_pruned']}, "
+                    f"Accuracy: {batch['accuracy']:.4f} (Drop: {batch['accuracy_drop']:.4f}), "
+                    f"Memory Reduction: {batch['memory_reduction']:.2f} MB"
+                )
+
+            # Log summary to WandB
+            wandb.log(summary)
+
         except Exception as e:
             logger.error(f"Error saving results: {str(e)}")
             raise
+
+
     
+    
+    
+    
+
     def run(self):
         """Execute the complete pruning pipeline"""
+        
         try:
             # 1. Load Model and Data
             logger.info("Loading model and data...")
             model, tokenizer, eval_dataloader = self._setup_model_and_data()
             
+            # def calculate_flops_and_params(model: nn.Module, max_seq_length: int) -> Dict[str, float]:
+            #     """
+            #     Calculate FLOPS and parameters for a LLaMA model
+            #     Args:
+            #         model: The LLaMA model
+            #         max_seq_length: Maximum sequence length
+            #     Returns:
+            #         Dictionary containing FLOPS and parameter counts
+            #     """
+            #     config = model.config
+                
+            #     # Core architecture parameters
+            #     hidden_size = config.hidden_size  # 2048
+            #     num_layers = config.num_hidden_layers  # 16
+            #     num_attention_heads = config.num_attention_heads  # 32
+            #     num_kv_heads = config.num_key_value_heads  # 8
+            #     head_dim = config.head_dim  # 64
+            #     intermediate_size = config.intermediate_size  # 8192
+            #     vocab_size = config.vocab_size  # 128256
+                
+            #     # Log configuration
+            #     logger.info(f"\nModel Configuration:")
+            #     logger.info(f"hidden_size: {hidden_size}")
+            #     logger.info(f"num_layers: {num_layers}")
+            #     logger.info(f"num_attention_heads: {num_attention_heads}")
+            #     logger.info(f"num_key_value_heads: {num_kv_heads}")
+            #     logger.info(f"head_dim: {head_dim}")
+            #     logger.info(f"intermediate_size: {intermediate_size}")
+            #     logger.info(f"vocab_size: {vocab_size}")
+
+            #     # Embedding parameters
+            #     embedding_params = vocab_size * hidden_size
+            #     embedding_nonzero = torch.count_nonzero(model.model.embed_tokens.weight).item()
+                
+            #     # Per layer parameter calculations
+            #     # For attention: Q projection (hidden x hidden), K and V projections (hidden x hidden/4 each due to GQA)
+            #     # and output projection (hidden x hidden)
+            #     qkv_params_per_layer = (hidden_size * hidden_size +  # Q projection
+            #                         2 * hidden_size * (hidden_size // 4))  # K and V projections (grouped)
+            #     attention_out_params_per_layer = hidden_size * hidden_size
+            #     attention_params_per_layer = qkv_params_per_layer + attention_out_params_per_layer
+                
+            #     # MLP parameters per layer: gate_proj, up_proj, down_proj
+            #     mlp_params_per_layer = 3 * hidden_size * intermediate_size
+                
+            #     # Total parameters
+            #     total_attention_params = attention_params_per_layer * num_layers
+            #     total_mlp_params = mlp_params_per_layer * num_layers
+            #     total_params = embedding_params + total_attention_params + total_mlp_params
+                
+            #     # Count nonzero parameters
+            #     total_attention_nonzero = 0
+            #     total_mlp_nonzero = 0
+            #     total_flops = 0
+                
+            #     for layer in model.model.layers:
+            #         # Count nonzeros
+            #         attention_nonzero = sum(torch.count_nonzero(p).item() for p in layer.self_attn.parameters())
+            #         mlp_nonzero = sum(torch.count_nonzero(p).item() for p in layer.mlp.parameters())
+                    
+            #         total_attention_nonzero += attention_nonzero
+            #         total_mlp_nonzero += mlp_nonzero
+                    
+            #         # Calculate ratios
+            #         attn_ratio = attention_nonzero / attention_params_per_layer
+            #         mlp_ratio = mlp_nonzero / mlp_params_per_layer
+                    
+            #         # FLOPS calculation
+            #         # 1. Attention
+            #         # Q projection for all heads
+            #         q_proj_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
+            #         # K,V projections for kv_heads
+            #         kv_proj_flops = 2 * max_seq_length * hidden_size * (hidden_size // 4) * attn_ratio
+            #         # Attention scores and softmax (per head)
+            #         attn_scores_flops = num_attention_heads * max_seq_length * max_seq_length * head_dim
+            #         attn_softmax_flops = num_attention_heads * max_seq_length * max_seq_length
+            #         # Attention output
+            #         attn_output_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
+                    
+            #         # 2. MLP with SwiGLU
+            #         mlp1_flops = 2 * max_seq_length * hidden_size * intermediate_size * mlp_ratio  # gate and up
+            #         mlp2_flops = max_seq_length * intermediate_size * hidden_size * mlp_ratio  # down
+                    
+            #         # 3. RMSNorm (2 per layer)
+            #         ln_flops = 4 * max_seq_length * hidden_size
+                    
+            #         layer_flops = (q_proj_flops + kv_proj_flops + attn_scores_flops + 
+            #                     attn_softmax_flops + attn_output_flops + mlp1_flops + 
+            #                     mlp2_flops + ln_flops)
+            #         total_flops += layer_flops
+                    
+            #         # logger.info(f"\nLayer Analysis:")
+            #         # logger.info(f"Attention - params: {attention_params_per_layer}, nonzero: {attention_nonzero}")
+            #         # logger.info(f"MLP - params: {mlp_params_per_layer}, nonzero: {mlp_nonzero}")
+            #         # logger.info(f"Layer FLOPS: {layer_flops:,.0f}")
+
+            #     # Add embedding lookup FLOPS
+            #     total_flops += max_seq_length
+                
+            #     nonzero_params = embedding_nonzero + total_attention_nonzero + total_mlp_nonzero
+                
+            #     return {
+            #         'total_flops': float(total_flops),
+            #         'total_params': int(total_params),
+            #         'nonzero_params': int(nonzero_params),
+            #         'sparsity': float(1 - (nonzero_params / total_params)) if total_params > 0 else 0.0,
+            #         'attention_params': int(total_attention_params),
+            #         'attention_nonzero': int(total_attention_nonzero),
+            #         'attention_sparsity': float(1 - (total_attention_nonzero / total_attention_params)),
+            #         'mlp_params': int(total_mlp_params),
+            #         'mlp_nonzero': int(total_mlp_nonzero),
+            #         'mlp_sparsity': float(1 - (total_mlp_nonzero / total_mlp_params)),
+            #         'layers': num_layers,
+            #         'hidden_size': hidden_size,
+            #         'intermediate_size': intermediate_size,
+            #         'num_attention_heads': num_attention_heads,
+            #         'num_kv_heads': num_kv_heads,
+            #         'embedding_params': embedding_params
+            #     }
+
+            # def apply_random_pruning(model: nn.Module, prune_ratio: float = 0.5) -> nn.Module:
+            #     """
+            #     Randomly prune model parameters
+            #     Args:
+            #         model: The transformer model
+            #         prune_ratio: Ratio of parameters to prune (0 to 1)
+            #     Returns:
+            #         Pruned model
+            #     """
+            #     logger.info(f"Applying random {prune_ratio:.1%} pruning to model...")
+            #     with torch.no_grad():
+            #         total_params = 0
+            #         pruned_params = 0
+            #         for name, param in model.named_parameters():
+            #             if 'weight' in name:  # Only prune weights
+            #                 mask = (torch.rand_like(param) > prune_ratio).to(param.dtype)
+            #                 param.data.mul_(mask)
+            #                 total_params += param.numel()
+            #                 pruned_params += (mask == 0).sum().item()
+                            
+            #     logger.info(f"Pruned {pruned_params}/{total_params} parameters ({pruned_params/total_params:.2%})")
+            #     return model       
+            
+            # initial_stats = calculate_flops_and_params(
+            # model, 
+            # self.config['model']['max_seq_length'])
+            # logger.info("\nInitial model statistics:")
+            # print(initial_stats)
+            
+            # # Apply random pruning
+            # model = apply_random_pruning(model, prune_ratio=0.5)
+            
+            # logger.info("Calculating stats after random pruning...")
+            # pruned_stats = calculate_flops_and_params(model, self.config['model']['max_seq_length'])
+            # print(pruned_stats)
+        
             # 2. Initial Model Evaluation
             initial_metrics, metrics_tracker = self._handle_initial_evaluation(model, tokenizer)
             

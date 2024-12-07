@@ -1,66 +1,72 @@
 {
   "initial_metrics": {
-    "accuracy": 0.43566433566433566,
-    "latency": 20.671892166137695,
-    "throughput": 48.374865346776744,
-    "parameter_count": 1235814400,
+    "accuracy": 0.43496503496503497,
+    "latency": 25.592967867851257,
+    "throughput": 39.073233130423894,
+    "parameter_count": 1235746816,
+    "active_parameter_count": 1235745127,
     "compute_metrics": {
-      "flops": 632702369792.0,
-      "macs": 1235746816.0,
-      "parameter_count": 1235814400,
-      "active_parameter_count": 1235812711,
-      "sparsity": 1.3667100819958478e-06,
-      "bandwidth_usage": 0.0,
+      "flops": 507006761472,
+      "macs": 253503380736,
+      "parameter_count": 1235746816,
+      "active_parameter_count": 1235745127,
+      "sparsity": 1.3667848285381368e-06,
+      "bandwidth_usage": 9.765625,
       "cache_hits": 1.0,
-      "activation_memory": 2509.52783203125
-    },
-    "environmental_metrics": {
-      "co2_emissions": 0.8952208749143284,
-      "energy_consumption": 8056.987874228955,
-      "power_usage": 104.73
+      "activation_memory": 2510.27001953125,
+      "attention_params": 167772160,
+      "attention_nonzero": 167771911,
+      "attention_sparsity": 1.484155654929431e-06,
+      "mlp_params": 805306368,
+      "mlp_nonzero": 805305237,
+      "mlp_sparsity": 1.4044344425201416e-06,
+      "embedding_params": 262668288
     },
     "cost_metrics": {
-      "inference_cost_usd": 31635.118493798007,
-      "gpu_time_cost": 2.871096134185791e-06,
-      "memory_cost": 1.3269074756010468e-06,
-      "total_operation_cost": 31635.118489600005
+      "inference_cost_usd": 61.78726154736513,
+      "gpu_time_cost": 3.5545788705348967e-06,
+      "memory_cost": 1.6427862584489362e-06,
+      "total_operation_cost": 61.78725635
     },
     "memory_footprint": {
       "gpu_allocated": 2366.26220703125,
-      "gpu_cached": 18908.0,
-      "cpu_memory": 1526.8984375
+      "gpu_cached": 4820.0,
+      "cpu_memory": 1414.28125
     }
   },
   "final_metrics": {
-    "accuracy": 0.43566433566433566,
-    "latency": 20.74544131755829,
-    "throughput": 48.20336114776365,
+    "accuracy": 0.43496503496503497,
+    "latency": 24.925202131271362,
+    "throughput": 40.12003572662674,
     "parameter_count": 1235746816,
+    "active_parameter_count": 1185413547,
     "compute_metrics": {
-      "flops": 2370827094,
-      "macs": 1185413547,
+      "flops": 481236992512,
+      "macs": 240618496256,
       "parameter_count": 1235746816,
       "active_parameter_count": 1185413547,
       "sparsity": 0.04073105295381152,
-      "bandwidth_usage": 0.0,
+      "bandwidth_usage": 10.7421875,
       "cache_hits": 1.0,
-      "activation_memory": 2606.27001953125
-    },
-    "environmental_metrics": {
-      "co2_emissions": 0.8269064591905806,
-      "energy_consumption": 7442.158132715225,
-      "power_usage": 99.19
+      "activation_memory": 2606.27001953125,
+      "attention_params": 167772160,
+      "attention_nonzero": 167771911,
+      "attention_sparsity": 1.484155654929431e-06,
+      "mlp_params": 805306368,
+      "mlp_nonzero": 754973657,
+      "mlp_sparsity": 0.06250131999452913,
+      "embedding_params": 262668288
     },
     "cost_metrics": {
-      "inference_cost_usd": 59.27068161696441,
-      "gpu_time_cost": 2.881311294105318e-06,
-      "memory_cost": 1.385653106673404e-06,
+      "inference_cost_usd": 59.27068247666608,
+      "gpu_time_cost": 3.461833629343245e-06,
+      "memory_cost": 1.6648324438597073e-06,
       "total_operation_cost": 59.27067735000001
     },
     "memory_footprint": {
       "gpu_allocated": 2462.26220703125,
-      "gpu_cached": 5044.0,
-      "cpu_memory": 1604.27734375
+      "gpu_cached": 4906.0,
+      "cpu_memory": 1507.75390625
     }
   },
   "pruning_summary": {
@@ -68,11 +74,12 @@
     "memory_reduction_mb": 96.0,
     "performance_impact": 0.0,
     "computational_savings": {
-      "flops_reduction": 99.62528556756008,
-      "parameter_reduction": 0.005468782367319883,
-      "latency_reduction": -0.3557930296340892,
-      "throughput_improvement": -0.35453163080384725,
-      "cost_reduction": 99.81264277031686
+      "flops_reduction": 5.082726882217954,
+      "active_parameter_reduction": 4.072974183777623,
+      "latency_reduction": 2.6091766301895474,
+      "throughput_improvement": 2.6790785208602683,
+      "cost_reduction": 4.07297395559419,
+      "co2_reduction": -44.651122528925335
     },
     "layer_statistics": {
       "15": {
@@ -95,7 +102,7 @@
       {
         "batch_number": 1,
         "units_pruned": 1,
-        "accuracy": 0.43566433566433566,
+        "accuracy": 0.43496503496503497,
         "accuracy_drop": 0.0,
         "memory_reduction": 96.0,
         "remaining_memory": 2270.26220703125
