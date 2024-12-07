@@ -182,9 +182,50 @@ class LayerProgressivePruner:
             
         return result
 
+    
     def optimize_pruning(self, pruning_units: List[PruningUnit]) -> PruningResult:
         """Execute batch-wise progressive pruning"""
         try:
+            def verify_pruned_units(pruning_units: List[PruningUnit], verbose: bool = True) -> bool:
+                """
+                Verify that pruned units are actually zeroed out
+                
+                Args:
+                    pruning_units: List of pruned units to verify
+                    verbose: Whether to print detailed information about non-zero parameters
+                
+                Returns:
+                    bool: True if all units are properly zeroed out, False otherwise
+                """
+                all_zeroed = True
+                
+                for unit in pruning_units:
+                    unit_zeroed = True
+                    for name, (param, slice_idx) in unit.param_references.items():
+                        # Handle different slice types
+                        if isinstance(slice_idx, tuple):
+                            param_slice = param.data[slice_idx[0], slice_idx[1]]
+                        else:
+                            param_slice = param.data[slice_idx]
+                        
+                        # Check if all parameters are zero
+                        if not torch.all(param_slice == 0):
+                            all_zeroed = False
+                            unit_zeroed = False
+                            if verbose:
+                                non_zero_count = torch.count_nonzero(param_slice).item()
+                                total_params = param_slice.numel()
+                                logger.error(
+                                    f"Unit {unit.id} parameter '{name}' not fully zeroed!\n"
+                                    f"Non-zero parameters: {non_zero_count}/{total_params} "
+                                    f"({non_zero_count/total_params*100:.2f}%)"
+                                )
+                    
+                    if verbose and unit_zeroed:
+                        logger.info(f"Unit {unit.id} successfully verified - all parameters zeroed")
+                
+                return all_zeroed
+
             # Calculate total units needed and count units per layer
             total_units_needed = self._estimate_required_units(pruning_units)
             total_units_per_layer = self._count_layer_units(pruning_units)
@@ -208,6 +249,12 @@ class LayerProgressivePruner:
                 for unit in batch:
                     self._save_unit_state(unit)
                     self._zero_out_unit(unit)
+                
+
+                # Verify pruning was successful
+                verify_result = verify_pruned_units(batch)
+                if not verify_result:
+                    raise RuntimeError("Pruning verification failed - parameters not properly zeroed!")
                 
                 # Evaluate model with batch pruned
                 metrics = self.metrics_tracker.evaluate_model(self.model, self.tokenizer, verbose=False)

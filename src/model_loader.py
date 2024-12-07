@@ -1,5 +1,3 @@
-#model_loader.py
-
 from pathlib import Path
 import os
 import torch
@@ -51,23 +49,45 @@ class ModelLoader:
         if not self.config.get('local_path'):
             return False
         
+        # Required files for any model
         required_files = [
             "config.json",
-            "pytorch_model.bin",
             "tokenizer.json",
             "tokenizer_config.json"
         ]
         
-        return all((self.local_path / file).exists() for file in required_files)
+        # Check for either pytorch_model.bin or model.safetensors
+        model_files = ["pytorch_model.bin", "model.safetensors"]
+        has_model_file = any((self.local_path / file).exists() for file in model_files)
+        
+        # Check required files
+        has_required_files = all((self.local_path / file).exists() for file in required_files)
+        
+        # Log what was found
+        if has_model_file and has_required_files:
+            logger.info("Found all required model files")
+        else:
+            if not has_model_file:
+                logger.warning("No model weights file found (looking for pytorch_model.bin or model.safetensors)")
+            missing_files = [f for f in required_files if not (self.local_path / f).exists()]
+            if missing_files:
+                logger.warning(f"Missing required files: {', '.join(missing_files)}")
+        
+        return has_required_files and has_model_file
 
     def _load_local(self) -> Tuple[LlamaForCausalLM, AutoTokenizer]:
         """Load model from local storage"""
         try:
+            # Check if safetensors version exists
+            use_safetensors = (self.local_path / "model.safetensors").exists()
+            logger.info(f"Loading model using {'safetensors' if use_safetensors else 'pytorch'} format")
+            
             model = LlamaForCausalLM.from_pretrained(
                 self.local_path,
                 torch_dtype=self.dtype,
                 low_cpu_mem_usage=True,
-                device_map='auto'
+                device_map='auto',
+                use_safetensors=use_safetensors
             )
             
             if self.config.get('gradient_checkpointing', False):
@@ -100,7 +120,8 @@ class ModelLoader:
                 token=self.hf_token,
                 torch_dtype=self.dtype,
                 low_cpu_mem_usage=True,
-                device_map='auto'
+                device_map='auto',
+                use_safetensors=True  # Prefer safetensors for downloads
             )
             
             if self.config.get('gradient_checkpointing', False):
@@ -119,7 +140,10 @@ class ModelLoader:
             # Save locally if path is specified
             if self.config.get('local_path'):
                 logger.info(f"Saving model to {self.local_path}")
-                model.save_pretrained(self.local_path)
+                model.save_pretrained(
+                    self.local_path,
+                    safe_serialization=True  # Use safetensors for saving
+                )
                 tokenizer.save_pretrained(self.local_path)
                 logger.info("Model saved successfully")
             
@@ -138,7 +162,10 @@ class ModelLoader:
             save_path.mkdir(parents=True, exist_ok=True)
             
             logger.info(f"Saving model to {save_path}")
-            model.save_pretrained(save_path)
+            model.save_pretrained(
+                save_path,
+                safe_serialization=True  # Use safetensors format for saving
+            )
             tokenizer.save_pretrained(save_path)
             logger.info("Model saved successfully")
             
