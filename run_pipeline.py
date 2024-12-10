@@ -12,6 +12,8 @@ from typing import Dict, Any, Tuple
 import wandb
 from dataclasses import dataclass
 import torch.nn as nn
+import time
+from datetime import datetime, timedelta
 
 from src.model_loader import ModelLoader
 from src.dependency_graph import DependencyGraphBuilder
@@ -114,8 +116,6 @@ class PruningPipeline:
             logger.error(f"Error setting up model and data: {str(e)}")
             raise
     
-    
-
     def _handle_initial_evaluation(self, model: torch.nn.Module, tokenizer: Any) -> Tuple[ModelMetrics, MetricsTracker]:
         metrics_tracker = self._setup_metrics_tracker(tokenizer)
         initial_metrics_path = self.save_dir / 'metrics' / 'initial_metrics.json'
@@ -249,14 +249,14 @@ class PruningPipeline:
         logger.info(f"Successfully loaded importance scores for {len(pruning_units)} units")
         return pruning_units
 
-   
 
-    def save_results(self, model: torch.nn.Module, pruning_result: PruningResult, initial_metrics: ModelMetrics):
+    def save_results(self, model: torch.nn.Module, tokenizer: Any, pruning_result: PruningResult, initial_metrics: ModelMetrics):
         try:
             # Save the final model
             final_model_dir = self.save_dir / 'final_model'
             final_model_dir.mkdir(exist_ok=True)
             model.save_pretrained(final_model_dir)
+            tokenizer.save_pretrained(final_model_dir)
 
             # Convert layer statistics to dictionary
             layer_stats_dict = {
@@ -389,192 +389,40 @@ class PruningPipeline:
         except Exception as e:
             logger.error(f"Error saving results: {str(e)}")
             raise
-
-
     
-    
-    
-    
-
     def run(self):
         """Execute the complete pruning pipeline"""
-        
+        start_time = time.time()
+        stage_times = {}
         try:
             # 1. Load Model and Data
+            stage_start = time.time()
             logger.info("Loading model and data...")
             model, tokenizer, eval_dataloader = self._setup_model_and_data()
-            
-            # def calculate_flops_and_params(model: nn.Module, max_seq_length: int) -> Dict[str, float]:
-            #     """
-            #     Calculate FLOPS and parameters for a LLaMA model
-            #     Args:
-            #         model: The LLaMA model
-            #         max_seq_length: Maximum sequence length
-            #     Returns:
-            #         Dictionary containing FLOPS and parameter counts
-            #     """
-            #     config = model.config
-                
-            #     # Core architecture parameters
-            #     hidden_size = config.hidden_size  # 2048
-            #     num_layers = config.num_hidden_layers  # 16
-            #     num_attention_heads = config.num_attention_heads  # 32
-            #     num_kv_heads = config.num_key_value_heads  # 8
-            #     head_dim = config.head_dim  # 64
-            #     intermediate_size = config.intermediate_size  # 8192
-            #     vocab_size = config.vocab_size  # 128256
-                
-            #     # Log configuration
-            #     logger.info(f"\nModel Configuration:")
-            #     logger.info(f"hidden_size: {hidden_size}")
-            #     logger.info(f"num_layers: {num_layers}")
-            #     logger.info(f"num_attention_heads: {num_attention_heads}")
-            #     logger.info(f"num_key_value_heads: {num_kv_heads}")
-            #     logger.info(f"head_dim: {head_dim}")
-            #     logger.info(f"intermediate_size: {intermediate_size}")
-            #     logger.info(f"vocab_size: {vocab_size}")
-
-            #     # Embedding parameters
-            #     embedding_params = vocab_size * hidden_size
-            #     embedding_nonzero = torch.count_nonzero(model.model.embed_tokens.weight).item()
-                
-            #     # Per layer parameter calculations
-            #     # For attention: Q projection (hidden x hidden), K and V projections (hidden x hidden/4 each due to GQA)
-            #     # and output projection (hidden x hidden)
-            #     qkv_params_per_layer = (hidden_size * hidden_size +  # Q projection
-            #                         2 * hidden_size * (hidden_size // 4))  # K and V projections (grouped)
-            #     attention_out_params_per_layer = hidden_size * hidden_size
-            #     attention_params_per_layer = qkv_params_per_layer + attention_out_params_per_layer
-                
-            #     # MLP parameters per layer: gate_proj, up_proj, down_proj
-            #     mlp_params_per_layer = 3 * hidden_size * intermediate_size
-                
-            #     # Total parameters
-            #     total_attention_params = attention_params_per_layer * num_layers
-            #     total_mlp_params = mlp_params_per_layer * num_layers
-            #     total_params = embedding_params + total_attention_params + total_mlp_params
-                
-            #     # Count nonzero parameters
-            #     total_attention_nonzero = 0
-            #     total_mlp_nonzero = 0
-            #     total_flops = 0
-                
-            #     for layer in model.model.layers:
-            #         # Count nonzeros
-            #         attention_nonzero = sum(torch.count_nonzero(p).item() for p in layer.self_attn.parameters())
-            #         mlp_nonzero = sum(torch.count_nonzero(p).item() for p in layer.mlp.parameters())
-                    
-            #         total_attention_nonzero += attention_nonzero
-            #         total_mlp_nonzero += mlp_nonzero
-                    
-            #         # Calculate ratios
-            #         attn_ratio = attention_nonzero / attention_params_per_layer
-            #         mlp_ratio = mlp_nonzero / mlp_params_per_layer
-                    
-            #         # FLOPS calculation
-            #         # 1. Attention
-            #         # Q projection for all heads
-            #         q_proj_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
-            #         # K,V projections for kv_heads
-            #         kv_proj_flops = 2 * max_seq_length * hidden_size * (hidden_size // 4) * attn_ratio
-            #         # Attention scores and softmax (per head)
-            #         attn_scores_flops = num_attention_heads * max_seq_length * max_seq_length * head_dim
-            #         attn_softmax_flops = num_attention_heads * max_seq_length * max_seq_length
-            #         # Attention output
-            #         attn_output_flops = max_seq_length * hidden_size * hidden_size * attn_ratio
-                    
-            #         # 2. MLP with SwiGLU
-            #         mlp1_flops = 2 * max_seq_length * hidden_size * intermediate_size * mlp_ratio  # gate and up
-            #         mlp2_flops = max_seq_length * intermediate_size * hidden_size * mlp_ratio  # down
-                    
-            #         # 3. RMSNorm (2 per layer)
-            #         ln_flops = 4 * max_seq_length * hidden_size
-                    
-            #         layer_flops = (q_proj_flops + kv_proj_flops + attn_scores_flops + 
-            #                     attn_softmax_flops + attn_output_flops + mlp1_flops + 
-            #                     mlp2_flops + ln_flops)
-            #         total_flops += layer_flops
-                    
-            #         # logger.info(f"\nLayer Analysis:")
-            #         # logger.info(f"Attention - params: {attention_params_per_layer}, nonzero: {attention_nonzero}")
-            #         # logger.info(f"MLP - params: {mlp_params_per_layer}, nonzero: {mlp_nonzero}")
-            #         # logger.info(f"Layer FLOPS: {layer_flops:,.0f}")
-
-            #     # Add embedding lookup FLOPS
-            #     total_flops += max_seq_length
-                
-            #     nonzero_params = embedding_nonzero + total_attention_nonzero + total_mlp_nonzero
-                
-            #     return {
-            #         'total_flops': float(total_flops),
-            #         'total_params': int(total_params),
-            #         'nonzero_params': int(nonzero_params),
-            #         'sparsity': float(1 - (nonzero_params / total_params)) if total_params > 0 else 0.0,
-            #         'attention_params': int(total_attention_params),
-            #         'attention_nonzero': int(total_attention_nonzero),
-            #         'attention_sparsity': float(1 - (total_attention_nonzero / total_attention_params)),
-            #         'mlp_params': int(total_mlp_params),
-            #         'mlp_nonzero': int(total_mlp_nonzero),
-            #         'mlp_sparsity': float(1 - (total_mlp_nonzero / total_mlp_params)),
-            #         'layers': num_layers,
-            #         'hidden_size': hidden_size,
-            #         'intermediate_size': intermediate_size,
-            #         'num_attention_heads': num_attention_heads,
-            #         'num_kv_heads': num_kv_heads,
-            #         'embedding_params': embedding_params
-            #     }
-
-            # def apply_random_pruning(model: nn.Module, prune_ratio: float = 0.5) -> nn.Module:
-            #     """
-            #     Randomly prune model parameters
-            #     Args:
-            #         model: The transformer model
-            #         prune_ratio: Ratio of parameters to prune (0 to 1)
-            #     Returns:
-            #         Pruned model
-            #     """
-            #     logger.info(f"Applying random {prune_ratio:.1%} pruning to model...")
-            #     with torch.no_grad():
-            #         total_params = 0
-            #         pruned_params = 0
-            #         for name, param in model.named_parameters():
-            #             if 'weight' in name:  # Only prune weights
-            #                 mask = (torch.rand_like(param) > prune_ratio).to(param.dtype)
-            #                 param.data.mul_(mask)
-            #                 total_params += param.numel()
-            #                 pruned_params += (mask == 0).sum().item()
-                            
-            #     logger.info(f"Pruned {pruned_params}/{total_params} parameters ({pruned_params/total_params:.2%})")
-            #     return model       
-            
-            # initial_stats = calculate_flops_and_params(
-            # model, 
-            # self.config['model']['max_seq_length'])
-            # logger.info("\nInitial model statistics:")
-            # print(initial_stats)
-            
-            # # Apply random pruning
-            # model = apply_random_pruning(model, prune_ratio=0.5)
-            
-            # logger.info("Calculating stats after random pruning...")
-            # pruned_stats = calculate_flops_and_params(model, self.config['model']['max_seq_length'])
-            # print(pruned_stats)
+            stage_times['model_loading'] = time.time() - stage_start
         
             # 2. Initial Model Evaluation
+            stage_start = time.time()
             initial_metrics, metrics_tracker = self._handle_initial_evaluation(model, tokenizer)
+            stage_times['initial_evaluation'] = time.time() - stage_start
             
             # 3. Build Pruning Units
+            stage_start = time.time()
             logger.info("Creating pruning units...")
             layer_percent = self.config['pruning']['dependency'].get('layer_percentage', 100.0)
             pruning_units = self._create_pruning_units(model, layer_percent)
+            stage_times['build_units'] = time.time() - stage_start
             
             # 4. Calculate Importance Scores
+            stage_start = time.time()
             logger.info("Handling importance scores...")
             pruning_units = self._handle_importance_scores(
                 model, tokenizer, eval_dataloader, pruning_units
             )
+            stage_times['importance_scoring'] = time.time() - stage_start
             
             # 5. Setup Pruner
+            stage_start = time.time()
             logger.info("Setting up progressive pruner...")
             pruner = LayerProgressivePruner(
                 model=model,
@@ -585,14 +433,31 @@ class PruningPipeline:
                 eval_dataloader=eval_dataloader,
                 tokenizer=tokenizer
             )
+            stage_times['setup_pruner'] = time.time() - stage_start
             
             # 6. Run Pruning
+            stage_start = time.time()
             logger.info("Starting progressive pruning...")
             pruning_result = pruner.optimize_pruning(pruning_units)
+            stage_times['pruning'] = time.time() - stage_start
             
             # 7. Save Results
+            stage_start = time.time()
             logger.info("Saving final results...")
-            self.save_results(model, pruning_result, initial_metrics)
+            self.save_results(model, tokenizer, pruning_result, initial_metrics)
+            stage_times['save_results'] = time.time() - stage_start
+            
+            # Calculate total time
+            total_time = time.time() - start_time
+            
+            # Log timing results
+            logger.info("\n=== Experiment Timing ===")
+            logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
+            logger.info("\nStage-wise timing:")
+            for stage, duration in stage_times.items():
+                percentage = (duration / total_time) * 100
+                logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
+                
             
             logger.info("Pruning pipeline completed successfully!")
             
