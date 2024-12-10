@@ -34,8 +34,7 @@ check_requirements() {
         "src/model_loader.py"
         "src/dependency_graph.py"
         "src/importance_scorer.py"
-        "src/pruning_env.py"
-        "src/rl_agent.py"
+        "src/adaptive_pruner.py"
         "src/metrics.py"
         "src/utils.py"
     )

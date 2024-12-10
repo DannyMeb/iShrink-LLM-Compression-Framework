@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from src.model_loader import ModelLoader
 from src.dependency_graph import DependencyGraphBuilder
 from src.importance_scorer import ImportanceScorer
-from src.adaptive_pruner import LayerProgressivePruner, PruningResult
+from src.adaptive_pruner import StructuralPruner, PruningResult
 from src.metrics import MetricsTracker, ModelMetrics
 from src.data import create_mmlu_dataloader
 
@@ -424,14 +424,10 @@ class PruningPipeline:
             # 5. Setup Pruner
             stage_start = time.time()
             logger.info("Setting up progressive pruner...")
-            pruner = LayerProgressivePruner(
+            pruner = StructuralPruner(
                 model=model,
                 config=self.config,
-                device=self.device,
-                initial_metrics=initial_metrics,
-                metrics_tracker=metrics_tracker,
-                eval_dataloader=eval_dataloader,
-                tokenizer=tokenizer
+                target_sparsity=0.5
             )
             stage_times['setup_pruner'] = time.time() - stage_start
             
@@ -444,12 +440,25 @@ class PruningPipeline:
             # 7. Save Results
             stage_start = time.time()
             logger.info("Saving final results...")
-            self.save_results(model, tokenizer, pruning_result, initial_metrics)
+            save_path = self.save_dir / 'final_model'
+            pruner.save_model(pruning_result, tokenizer, save_path)
             stage_times['save_results'] = time.time() - stage_start
             
             # Calculate total time
             total_time = time.time() - start_time
             
+            # final_metrics = self.metrics_tracker.evaluate_model(
+            #     pruning_result.pruned_model,
+            #     tokenizer
+            # )
+            
+            # self.save_results(
+            #     pruning_result.pruned_model, 
+            #     tokenizer,
+            #     pruning_result,
+            #     initial_metrics
+            # )
+
             # Log timing results
             logger.info("\n=== Experiment Timing ===")
             logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
