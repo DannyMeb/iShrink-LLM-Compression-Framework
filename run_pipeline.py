@@ -251,73 +251,34 @@ class PruningPipeline:
 
 
     def save_results(self, model: torch.nn.Module, tokenizer: Any, pruning_result: PruningResult, initial_metrics: ModelMetrics):
+        """Save pruning results based on current PruningResult structure"""
         try:
             # Save the final model
-            final_model_dir = self.save_dir / 'final_model'
-            final_model_dir.mkdir(exist_ok=True)
-            model.save_pretrained(final_model_dir)
-            tokenizer.save_pretrained(final_model_dir)
+            # final_model_dir = self.save_dir / 'final_model'
+            # final_model_dir.mkdir(exist_ok=True)
+            # model.save_pretrained(final_model_dir)
+            # tokenizer.save_pretrained(final_model_dir)
 
-            # Convert layer statistics to dictionary
-            layer_stats_dict = {
-                layer_idx: {
-                    'attention_units': {
-                        'pruned': stats.attention_units_pruned,
-                        'total': stats.total_attention_units,
-                        'remaining': stats.total_attention_units - stats.attention_units_pruned,
-                        'prune_ratio': float(stats.attention_units_pruned / stats.total_attention_units)
-                    },
-                    'mlp_units': {
-                        'pruned': stats.mlp_units_pruned,
-                        'total': stats.total_mlp_units,
-                        'remaining': stats.total_mlp_units - stats.mlp_units_pruned,
-                        'prune_ratio': float(stats.mlp_units_pruned / stats.total_mlp_units)
-                    },
-                    'memory_saved': float(stats.memory_saved)
-                }
-                for layer_idx, stats in pruning_result.layer_stats.items()
-            }
-
-            # Convert batch statistics to a list of dictionaries
-            batch_stats_list = [
-                {
-                    'batch_number': batch.batch_number,
-                    'units_pruned': batch.units_pruned,
-                    'accuracy': float(batch.accuracy),
-                    'accuracy_drop': float(batch.accuracy_drop),
-                    'memory_reduction': float(batch.memory_reduction),
-                    'remaining_memory': float(batch.remaining_memory)
-                }
-                for batch in pruning_result.batch_stats
-            ]
-
-            # Calculate computational savings
-            computational_savings = {
-                'flops_reduction': float(
-                    (initial_metrics.flops - pruning_result.final_metrics.flops) / initial_metrics.flops * 100
-                ) if initial_metrics.flops > 0 else 0.0,
-                'active_parameter_reduction': float(
-                    (initial_metrics.active_parameter_count - pruning_result.final_metrics.active_parameter_count) /
-                    initial_metrics.active_parameter_count * 100
-                ) if initial_metrics.active_parameter_count > 0 else 0.0,
-                'latency_reduction': float(
-                    (initial_metrics.latency - pruning_result.final_metrics.latency) / initial_metrics.latency * 100
-                ) if initial_metrics.latency > 0 else 0.0,
-                'throughput_improvement': float(
-                    (pruning_result.final_metrics.throughput - initial_metrics.throughput) / initial_metrics.throughput * 100
-                ) if initial_metrics.throughput > 0 else 0.0,
-                'cost_reduction': float(
-                    (initial_metrics.cost_metrics.inference_cost_usd - pruning_result.final_metrics.cost_metrics.inference_cost_usd) /
-                    initial_metrics.cost_metrics.inference_cost_usd * 100
-                ) if initial_metrics.cost_metrics.inference_cost_usd > 0 else 0.0,
-                'co2_reduction': float(
-                    (initial_metrics.co2_emissions - pruning_result.final_metrics.co2_emissions) /
-                    initial_metrics.co2_emissions * 100
-                ) if initial_metrics.co2_emissions > 0 else 0.0
-            }
-
-            # Create summary
+            # Create summary using available attributes from PruningResult
             summary = {
+                'initial_size': {
+                    'num_heads': pruning_result.original_size['num_heads'],
+                    'num_kv_heads': pruning_result.original_size['num_kv_heads'],
+                    'intermediate_size': pruning_result.original_size['intermediate_size'],
+                    'hidden_size': pruning_result.original_size['hidden_size']
+                },
+                'pruned_size': {
+                    'num_heads': pruning_result.pruned_size['num_heads'],
+                    'num_kv_heads': pruning_result.pruned_size['num_kv_heads'],
+                    'intermediate_size': pruning_result.pruned_size['intermediate_size'],
+                    'hidden_size': pruning_result.pruned_size['hidden_size']
+                },
+                'compression_metrics': {
+                    'compression_ratio': pruning_result.compression_ratio,
+                    'parameters_before': pruning_result.params_before,
+                    'parameters_after': pruning_result.params_after,
+                    'actual_compression': pruning_result.actual_compression
+                },
                 'initial_metrics': {
                     'accuracy': initial_metrics.accuracy,
                     'latency': initial_metrics.latency,
@@ -327,64 +288,47 @@ class PruningPipeline:
                     'compute_metrics': vars(initial_metrics.compute_metrics),
                     'cost_metrics': vars(initial_metrics.cost_metrics),
                     'memory_footprint': initial_metrics.memory_footprint
-                },
-                'final_metrics': {
-                    'accuracy': pruning_result.final_metrics.accuracy,
-                    'latency': pruning_result.final_metrics.latency,
-                    'throughput': pruning_result.final_metrics.throughput,
-                    'parameter_count': pruning_result.final_metrics.parameter_count,
-                    'active_parameter_count': pruning_result.final_metrics.active_parameter_count,
-                    'compute_metrics': vars(pruning_result.final_metrics.compute_metrics),
-                    'cost_metrics': vars(pruning_result.final_metrics.cost_metrics),
-                    'memory_footprint': pruning_result.final_metrics.memory_footprint
-                },
-                'pruning_summary': {
-                    'total_units_pruned': len(pruning_result.pruned_units),
-                    'memory_reduction_mb': pruning_result.memory_reduction,
-                    'performance_impact': pruning_result.performance_impact,
-                    'computational_savings': computational_savings,
-                    'layer_statistics': layer_stats_dict,
-                    'batch_statistics': batch_stats_list
                 }
             }
+
+            # Save masks for attention and MLP layers
+            summary['pruning_masks'] = {
+                'attention_masks': {
+                    layer_idx: mask.tolist() 
+                    for layer_idx, mask in pruning_result.attention_mask.items()
+                },
+                'mlp_masks': {
+                    layer_idx: mask.tolist() 
+                    for layer_idx, mask in pruning_result.mlp_mask.items()
+                }
+            }
+
+            # Log compression results
+            logger.info("\n=== Pruning Results ===")
+            logger.info(f"Original Parameters: {pruning_result.params_before:,}")
+            logger.info(f"Pruned Parameters: {pruning_result.params_after:,}")
+            logger.info(f"Compression Ratio: {pruning_result.compression_ratio:.2%}")
+            logger.info(f"Actual Compression: {pruning_result.actual_compression:.2%}")
+            
+            # Save dimensions changes
+            logger.info("\n=== Model Dimensions ===")
+            logger.info(f"Original Attention Heads: {pruning_result.original_size['num_heads']}")
+            logger.info(f"Pruned Attention Heads: {pruning_result.pruned_size['num_heads']}")
+            logger.info(f"Original KV Heads: {pruning_result.original_size['num_kv_heads']}")
+            logger.info(f"Pruned KV Heads: {pruning_result.pruned_size['num_kv_heads']}")
+            logger.info(f"Original Intermediate Size: {pruning_result.original_size['intermediate_size']}")
+            logger.info(f"Pruned Intermediate Size: {pruning_result.pruned_size['intermediate_size']}")
 
             # Save summary to a JSON file
             summary_path = self.save_dir / 'pruning_summary.json'
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
 
-            # Log final results
-            logger.info("\n=== Final Pruning Results ===")
-            logger.info(f"Total Memory Reduction: {pruning_result.memory_reduction:.2f} MB")
-            logger.info(f"Final Accuracy: {pruning_result.final_metrics.accuracy:.4f}")
-            logger.info(f"Performance Impact: {pruning_result.performance_impact * 100:.2f}%")
-            logger.info("\n=== Computational Savings ===")
-            for key, value in computational_savings.items():
-                logger.info(f"{key.replace('_', ' ').title()}: {value:.2f}%")
-
-            # Log statistics
-            logger.info("\n=== Layer-Wise Statistics ===")
-            for layer_idx, stats in sorted(layer_stats_dict.items()):
-                logger.info(
-                    f"Layer {layer_idx}: "
-                    f"Attention Units Pruned {stats['attention_units']['pruned']} / {stats['attention_units']['total']} "
-                    f"({stats['attention_units']['prune_ratio'] * 100:.2f}%), "
-                    f"MLP Units Pruned {stats['mlp_units']['pruned']} / {stats['mlp_units']['total']} "
-                    f"({stats['mlp_units']['prune_ratio'] * 100:.2f}%)"
-                )
-
-            # Log batch progress
-            logger.info("\n=== Batch-Wise Statistics ===")
-            for batch in batch_stats_list:
-                logger.info(
-                    f"Batch {batch['batch_number']}: "
-                    f"Units Pruned: {batch['units_pruned']}, "
-                    f"Accuracy: {batch['accuracy']:.4f} (Drop: {batch['accuracy_drop']:.4f}), "
-                    f"Memory Reduction: {batch['memory_reduction']:.2f} MB"
-                )
-
-            # Log summary to WandB
-            wandb.log(summary)
+            logger.info(f"\nResults saved to {summary_path}")
+            
+            # Log to wandb if enabled
+            if self.config['training']['logging']['use_wandb']:
+                wandb.log(summary)
 
         except Exception as e:
             logger.error(f"Error saving results: {str(e)}")
@@ -427,7 +371,8 @@ class PruningPipeline:
             pruner = StructuralPruner(
                 model=model,
                 config=self.config,
-                target_sparsity=0.5
+                attention_sparsity=0, 
+                mlp_sparsity=0.3
             )
             stage_times['setup_pruner'] = time.time() - stage_start
             
@@ -452,12 +397,12 @@ class PruningPipeline:
             #     tokenizer
             # )
             
-            # self.save_results(
-            #     pruning_result.pruned_model, 
-            #     tokenizer,
-            #     pruning_result,
-            #     initial_metrics
-            # )
+            self.save_results(
+                pruning_result.pruned_model, 
+                tokenizer,
+                pruning_result,
+                initial_metrics
+            )
 
             # Log timing results
             logger.info("\n=== Experiment Timing ===")
