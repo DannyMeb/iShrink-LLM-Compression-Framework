@@ -23,18 +23,21 @@ pruning:
   targets:
     min_accuracy: 0.40  # 90% of baseline 49.3% MMLU accuracy
     min_accuracy_ratio: 0.90
-    max_pruned_heads: 100
     compression_target: 0.9
     units_per_step: 10
     max_pruned_heads: 100
     compression_target: 0.98
+    min_accuracy: 0.40
+    attention_sparsity: 0.0  
+    mlp_sparsity: 0.3      
+    max_pruned_heads: 100
   
   # Dependency configuration
   dependency:
     hidden_size: 768
     num_heads: 12
     mlp_ratio: 4
-    mlp_group_size: 8  # Size of MLP neuron groups
+    mlp_group_size: 1  # Size of MLP neuron groups
     layer_percentage: 100
   
   # Importance scoring configuration
@@ -124,7 +127,7 @@ training:
     max_seq_length: 512
     eval_batch_size: 4
     prefetch_factor: 2
-    eval_split: 0.1
+    eval_split: 0.5
     num_workers: 2
     shuffle: false       # No shuffling for evaluation
   

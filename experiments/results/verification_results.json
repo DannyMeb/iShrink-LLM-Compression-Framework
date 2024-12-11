@@ -1,45 +1,45 @@
 {
-  "timestamp": "2024-12-11T18:13:25.565489",
+  "timestamp": "2024-12-12T02:44:28.605761",
   "model_path": "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/experiments/results/final_model",
   "metrics": {
-    "accuracy": 0.27342657342657345,
-    "latency_ms": 22.355690598487854,
-    "throughput": 44.731340129910386,
-    "parameter_count": 993525760,
-    "active_parameters": 993524411,
-    "sparsity": 1.3577906625705793e-06,
-    "flops": 382989754880,
-    "macs": 191494877440,
+    "accuracy": 0.3048951048951049,
+    "latency_ms": 26.52612328529358,
+    "throughput": 37.698686281625356,
+    "parameter_count": 994115584,
+    "active_parameters": 994114250,
+    "sparsity": 1.3418962758748876e-06,
+    "flops": 383291752448,
+    "macs": 191645876224,
     "memory_footprint": {
-      "gpu_allocated": 1904.26220703125,
+      "gpu_allocated": 1905.38720703125,
       "gpu_cached": 4416.0,
-      "cpu_memory": 1312.9609375
+      "cpu_memory": 1316.35546875
     },
-    "power_watts": 188.66,
-    "co2_emissions": 3.8276019800429877,
-    "cost_per_inference": 49.67622480977194,
+    "power_watts": 209.51,
+    "co2_emissions": 4.5973373271136815,
+    "cost_per_inference": 49.70571755523783,
     "compute_metrics": {
-      "flops": 382989754880,
-      "macs": 191494877440,
-      "parameter_count": 993525760,
-      "active_parameter_count": 993524411,
-      "sparsity": 1.3577906625705793e-06,
+      "flops": 383291752448,
+      "macs": 191645876224,
+      "parameter_count": 994115584,
+      "active_parameter_count": 994114250,
+      "sparsity": 1.3418962758748876e-06,
       "bandwidth_usage": 1.953125,
       "cache_hits": 1.0,
-      "activation_memory": 2048.27001953125,
+      "activation_memory": 2049.39501953125,
       "attention_params": 167772160,
       "attention_nonzero": 167771911,
       "attention_sparsity": 1.484155654929431e-06,
-      "mlp_params": 563085312,
-      "mlp_nonzero": 563084521,
-      "mlp_sparsity": 1.4047604921518797e-06,
+      "mlp_params": 563675136,
+      "mlp_nonzero": 563674360,
+      "mlp_sparsity": 1.3766794921821202e-06,
       "embedding_params": 262668288
     },
     "cost_metrics": {
-      "inference_cost_usd": 49.67622480977194,
-      "gpu_time_cost": 3.1049570275677577e-06,
-      "memory_cost": 1.1548149066510486e-06,
-      "total_operation_cost": 49.676220550000004
+      "inference_cost_usd": 49.70571755523783,
+      "gpu_time_cost": 3.684183789624108e-06,
+      "memory_cost": 1.371054035371423e-06,
+      "total_operation_cost": 49.705712500000004
     }
   }
 }

@@ -5,7 +5,7 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Any, Optional
-from .dependency_graph import PruningUnit
+from .pruning_units import PruningUnit
 import logging
 import traceback
 from tqdm import tqdm

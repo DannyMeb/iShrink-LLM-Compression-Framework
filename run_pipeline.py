@@ -3,6 +3,7 @@
 import os
 import numpy as np
 import json
+from src.verify import ModelVerifier
 import torch
 import yaml
 import logging
@@ -16,7 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 from src.model_loader import ModelLoader
-from src.dependency_graph import DependencyGraphBuilder
+from src.pruning_units import DependencyGraphBuilder
 from src.importance_scorer import ImportanceScorer
 from src.adaptive_pruner import StructuralPruner, PruningResult
 from src.metrics import MetricsTracker, ModelMetrics
@@ -388,32 +389,19 @@ class PruningPipeline:
             save_path = self.save_dir / 'final_model'
             pruner.save_model(pruning_result, tokenizer, save_path)
             stage_times['save_results'] = time.time() - stage_start
+            del model
+            del pruning_result.pruned_model
+            torch.cuda.empty_cache()
             
-            # Calculate total time
-            total_time = time.time() - start_time
-            
-            # final_metrics = self.metrics_tracker.evaluate_model(
-            #     pruning_result.pruned_model,
-            #     tokenizer
-            # )
-            
-            self.save_results(
-                pruning_result.pruned_model, 
-                tokenizer,
-                pruning_result,
-                initial_metrics
-            )
 
-            # Log timing results
-            logger.info("\n=== Experiment Timing ===")
-            logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
-            logger.info("\nStage-wise timing:")
-            for stage, duration in stage_times.items():
-                percentage = (duration / total_time) * 100
-                logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
-                
-            
-            logger.info("Pruning pipeline completed successfully!")
+            # 8.  Run verification
+            config_path="config/config.yaml"
+            logger.info("Starting model verification...")
+            verifier = ModelVerifier(config_path)
+            # final_metrics = verifier.verify()
+    
+            total_time = time.time() - start_time
+            self._log_timing_results(total_time, stage_times)
             
             return pruning_result
             
@@ -423,6 +411,15 @@ class PruningPipeline:
         finally:
             if self.config['training']['logging']['use_wandb']:
                 wandb.finish()
+
+    def _log_timing_results(self, total_time: float, stage_times: Dict[str, float]):
+        """Log detailed timing results"""
+        logger.info("\n=== Experiment Timing ===")
+        logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
+        logger.info("\nStage-wise timing:")
+        for stage, duration in stage_times.items():
+            percentage = (duration / total_time) * 100
+            logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
 
 def main():
     parser = argparse.ArgumentParser(description='Run pruning pipeline')

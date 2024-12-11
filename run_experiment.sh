@@ -32,9 +32,9 @@ check_requirements() {
         "requirements.txt"
         "src/__init__.py"
         "src/model_loader.py"
-        "src/dependency_graph.py"
         "src/importance_scorer.py"
         "src/adaptive_pruner.py"
+        "src/pruning_units.py"
         "src/metrics.py"
         "src/utils.py"
     )

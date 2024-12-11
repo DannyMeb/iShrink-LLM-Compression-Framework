@@ -1,3 +1,5 @@
+# verify.py
+
 import os
 import sys
 import torch
@@ -6,12 +8,8 @@ import yaml
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Dict, Any
 
-# Setup project paths
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-sys.path.insert(0, str(PROJECT_ROOT))
-
-# Use absolute imports
 from src.model_loader import ModelLoader
 from src.metrics import MetricsTracker
 from src.data import create_mmlu_dataloader
@@ -23,73 +21,73 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def load_config(config_path: str):
-    """Load configuration file"""
-    config_path = PROJECT_ROOT / config_path
-    logger.info(f"Loading config from: {config_path}")
-    with open(config_path) as f:
-        return yaml.safe_load(f)
-
-def get_hf_token():
-    """Get HuggingFace token from environment variable or prompt user"""
-    token = os.environ.get("HF_TOKEN")
-    if not token:
-        token = input("Please enter your HuggingFace token: ").strip()
+class ModelVerifier:
+    """Handles verification of pruned models with comprehensive metrics tracking and detailed logging"""
+    
+    def __init__(self, config_path: str = "config/config.yaml"):
+        """
+        Initialize the model verifier with configuration settings
+        
+        Args:
+            config_path: Path to configuration file
+        """
+        self.project_root = Path(__file__).parent.parent.absolute()
+        sys.path.insert(0, str(self.project_root))
+        
+        self.config = self._load_config(config_path)
+        self.device = torch.device(self.config['model']['device'])
+        self.save_dir = self.project_root / self.config['system']['save_dir']
+        self.final_model_path = self.save_dir / 'final_model'
+        
+        # Initialize as None, will be set during verification
+        self.model_loader = None
+        self.metrics_tracker = None
+        self.model = None
+        self.tokenizer = None
+    
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
+        """Load and validate configuration file"""
+        config_path = self.project_root / config_path
+        logger.info(f"Loading config from: {config_path}")
+        with open(config_path) as f:
+            return yaml.safe_load(f)
+    
+    def _get_hf_token(self) -> str:
+        """Retrieve HuggingFace token from environment or user input"""
+        token = os.environ.get("HF_TOKEN")
         if not token:
-            raise ValueError("HuggingFace token is required")
-    return token
-
-def verify_model(config_path: str = "config/config.yaml"):
-    """Load and verify pruned model performance"""
-    try:
-        # Load configuration
-        config = load_config(config_path)
-        device = torch.device(config['model']['device'])
+            token = input("Please enter your HuggingFace token: ").strip()
+            if not token:
+                raise ValueError("HuggingFace token is required")
+        return token
+    
+    def _setup_model(self) -> None:
+        """Initialize and load the pruned model"""
+        if not self.final_model_path.exists():
+            raise FileNotFoundError(f"Pruned model not found at {self.final_model_path}")
+            
+        self.config['model']['local_path'] = str(self.final_model_path)
+        logger.info(f"Looking for model at: {self.final_model_path}")
         
-        # Get HuggingFace token
-        hf_token = get_hf_token()
-        
-        # Use PROJECT_ROOT to resolve save_dir
-        save_dir = PROJECT_ROOT / config['system']['save_dir']
-        final_model_path = save_dir / 'final_model'
-        
-        logger.info(f"Looking for model at: {final_model_path}")
-        
-        if not final_model_path.exists():
-            raise FileNotFoundError(f"Pruned model not found at {final_model_path}")
-        
-        config['model']['local_path'] = str(final_model_path)
-        
-        # Initialize model loader and load model
         logger.info("Loading pruned model...")
-        model_loader = ModelLoader(config=config['model'], hf_token=hf_token)
-        model, tokenizer = model_loader.load()
-        
-        # Create evaluation dataloader
-        logger.info("Creating evaluation dataloader...")
-        eval_dataloader, _ = create_mmlu_dataloader(
-            tokenizer=tokenizer,
-            config=config,
-            split="validation"
+        self.model_loader = ModelLoader(
+            config=self.config['model'],
+            hf_token=self._get_hf_token()
         )
-        
-        # Setup metrics tracker
-        metrics_tracker = MetricsTracker(
-            save_dir=save_dir,
-            device=device,
-            tokenizer=tokenizer,
-            config=config,
-            use_wandb=False  # Disable wandb for verification
+        self.model, self.tokenizer = self.model_loader.load()
+    
+    def _setup_metrics(self) -> None:
+        """Initialize metrics tracking"""
+        self.metrics_tracker = MetricsTracker(
+            save_dir=self.save_dir,
+            device=self.device,
+            tokenizer=self.tokenizer,
+            config=self.config,
+            use_wandb=False
         )
-        
-        # Clear GPU memory before evaluation
-        torch.cuda.empty_cache()
-        
-        # Evaluate model
-        logger.info("\nEvaluating model...")
-        metrics = metrics_tracker.evaluate_model(model, tokenizer, verbose=True)
-        
-        # Print results
+    
+    def _log_detailed_metrics(self, metrics: Any) -> None:
+        """Log comprehensive evaluation metrics with detailed breakdowns"""
         logger.info("\n" + "="*50)
         logger.info("MODEL VERIFICATION RESULTS")
         logger.info("="*50)
@@ -130,11 +128,12 @@ def verify_model(config_path: str = "config/config.yaml"):
         logger.info(f"Power Usage: {metrics.power_watts:.2f} watts")
         logger.info(f"CO2 Emissions: {metrics.co2_emissions:.4f} grams")
         logger.info(f"Cost per Inference: ${metrics.cost_per_inference:.6f}")
-        
-        # Save results
+    
+    def _save_verification_results(self, metrics: Any) -> None:
+        """Save detailed verification results to JSON"""
         results = {
             'timestamp': datetime.now().isoformat(),
-            'model_path': str(final_model_path),
+            'model_path': str(self.final_model_path),
             'metrics': {
                 'accuracy': metrics.accuracy,
                 'latency_ms': metrics.latency,
@@ -153,20 +152,74 @@ def verify_model(config_path: str = "config/config.yaml"):
             }
         }
         
-        # Save verification results
-        verification_path = save_dir / 'verification_results.json'
+        verification_path = self.save_dir / 'verified_results.json'
         with open(verification_path, 'w') as f:
             json.dump(results, f, indent=2)
         
         logger.info(f"\nVerification results saved to: {verification_path}")
         logger.info("="*50)
+    
+    def verify(self) -> Optional[Any]:
+        """
+        Execute the complete verification process with comprehensive logging
         
-    except Exception as e:
-        logger.error(f"Verification failed: {str(e)}")
-        raise
-    finally:
-        # Clean up
-        torch.cuda.empty_cache()
+        Returns:
+            Optional[Any]: The verification metrics if successful, None otherwise
+        """
+        try:
+            # Clear any existing GPU memory
+            torch.cuda.empty_cache()
+            
+            # Setup components
+            self._setup_model()
+            self._setup_metrics()
+            
+            # Create evaluation dataloader
+            logger.info("Creating evaluation dataloader...")
+            eval_dataloader, _ = create_mmlu_dataloader(
+                tokenizer=self.tokenizer,
+                config=self.config,
+                split="validation"
+            )
+            
+            # Clear GPU memory before evaluation
+            torch.cuda.empty_cache()
+            
+            # Evaluate model
+            logger.info("\nEvaluating model...")
+            metrics = self.metrics_tracker.evaluate_model(
+                self.model,
+                self.tokenizer,
+                verbose=True
+            )
+            
+            # Log and save comprehensive results
+            self._log_detailed_metrics(metrics)
+            self._save_verification_results(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Verification failed: {str(e)}")
+            raise
+        finally:
+            # Cleanup
+            if self.model is not None:
+                del self.model
+            torch.cuda.empty_cache()
+
+def verify_model(config_path: str = "config/config.yaml") -> Optional[Any]:
+    """
+    Convenience function to run verification process
+    
+    Args:
+        config_path: Path to configuration file
+        
+    Returns:
+        Optional[Any]: Verification metrics if successful, None otherwise
+    """
+    verifier = ModelVerifier(config_path)
+    return verifier.verify()
 
 if __name__ == "__main__":
     verify_model()
