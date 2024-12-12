@@ -174,14 +174,6 @@ class ModelVerifier:
             self._setup_model()
             self._setup_metrics()
             
-            # Create evaluation dataloader
-            logger.info("Creating evaluation dataloader...")
-            eval_dataloader, _ = create_mmlu_dataloader(
-                tokenizer=self.tokenizer,
-                config=self.config,
-                split="validation"
-            )
-            
             # Clear GPU memory before evaluation
             torch.cuda.empty_cache()
             

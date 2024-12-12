@@ -296,11 +296,11 @@ class ImportanceScorer:
             raw_scores = np.array([unit.importance_score for unit in pruning_units])
             
             # Log raw score statistics
-            logger.info("\nRaw Score Statistics:")
-            logger.info(f"Mean: {np.mean(raw_scores):.6f}")
-            logger.info(f"Std: {np.std(raw_scores):.6f}")
-            logger.info(f"Min: {np.min(raw_scores):.6f}")
-            logger.info(f"Max: {np.max(raw_scores):.6f}")
+            # logger.info("\nRaw Score Statistics:")
+            # logger.info(f"Mean: {np.mean(raw_scores):.6f}")
+            # logger.info(f"Std: {np.std(raw_scores):.6f}")
+            # logger.info(f"Min: {np.min(raw_scores):.6f}")
+            # logger.info(f"Max: {np.max(raw_scores):.6f}")
             
             # Apply z-score normalization globally
             mean_score = np.mean(raw_scores)
@@ -322,11 +322,11 @@ class ImportanceScorer:
             
             # Log distribution of normalized scores
             normalized_scores = np.array([unit.importance_score for unit in pruning_units])
-            logger.info("\nNormalized Score Statistics:")
-            logger.info(f"Mean: {np.mean(normalized_scores):.6f}")
-            logger.info(f"Std: {np.std(normalized_scores):.6f}")
-            logger.info(f"Min: {np.min(normalized_scores):.6f}")
-            logger.info(f"Max: {np.max(normalized_scores):.6f}")
+            # logger.info("\nNormalized Score Statistics:")
+            # logger.info(f"Mean: {np.mean(normalized_scores):.6f}")
+            # logger.info(f"Std: {np.std(normalized_scores):.6f}")
+            # logger.info(f"Min: {np.min(normalized_scores):.6f}")
+            # logger.info(f"Max: {np.max(normalized_scores):.6f}")
             
             # Log top and bottom units
             logger.info("\nTop 10 most important units:")
@@ -346,12 +346,12 @@ class ImportanceScorer:
                 layer_scores[layer_idx].append(unit.importance_score)
             
             logger.info("\nLayer-wise Score Statistics:")
-            for layer_idx, scores in sorted(layer_scores.items()):
-                scores_array = np.array(scores)
-                logger.info(f"Layer {layer_idx}:")
-                logger.info(f"  Mean: {np.mean(scores_array):.6f}")
-                logger.info(f"  Std: {np.std(scores_array):.6f}")
-                logger.info(f"  Units: {len(scores)}")
+            # for layer_idx, scores in sorted(layer_scores.items()):
+            #     scores_array = np.array(scores)
+            #     logger.info(f"Layer {layer_idx}:")
+            #     logger.info(f"  Mean: {np.mean(scores_array):.6f}")
+            #     logger.info(f"  Std: {np.std(scores_array):.6f}")
+            #     logger.info(f"  Units: {len(scores)}")
             
             return pruning_units
             

@@ -1,0 +1,47 @@
+{
+  "os": "Linux-5.15.133-ql-generic-13.0-9-x86_64-with-glibc2.35",
+  "python": "3.10.15",
+  "startedAt": "2024-12-12T13:50:19.512177Z",
+  "args": [
+    "--config",
+    "config/config.yaml"
+  ],
+  "program": "/home/daniel.gebre/Desktop/Thesis/LLM-Compression/run_pipeline.py",
+  "codePath": "run_pipeline.py",
+  "git": {
+    "remote": "https://dannymeb:@github.com/DannyMeb/LLM-Compression.git",
+    "commit": "508ad5bdb6642821adc684d5ac89914ca917249d"
+  },
+  "email": "daniwalker881@gmail.com",
+  "root": "/home/daniel.gebre/Desktop/Thesis/LLM-Compression",
+  "host": "ws-l2-007",
+  "username": "daniel.gebre",
+  "executable": "/home/daniel.gebre/.conda/envs/gentra/bin/python",
+  "codePathLocal": "run_pipeline.py",
+  "cpu_count": 16,
+  "cpu_count_logical": 32,
+  "gpu": "Quadro RTX 6000",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1073741824",
+      "used": "45608960"
+    }
+  },
+  "memory": {
+    "total": "134809321472"
+  },
+  "cpu": {
+    "count": 16,
+    "countLogical": 32
+  },
+  "gpu_nvidia": [
+    {
+      "name": "Quadro RTX 6000",
+      "memoryTotal": "25769803776",
+      "cudaCores": 4608,
+      "architecture": "Turing"
+    }
+  ],
+  "cudaVersion": "12.2"
+}

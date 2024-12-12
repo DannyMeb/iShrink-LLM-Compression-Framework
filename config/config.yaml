@@ -129,7 +129,7 @@ training:
     prefetch_factor: 2
     eval_split: 0.5
     num_workers: 2
-    shuffle: false       # No shuffling for evaluation
+    shuffle: false       
   
   optimization:
     num_episodes: 100
