@@ -135,7 +135,7 @@ class MetricsTracker:
         device: torch.device,
         tokenizer: Any,
         config: Dict,
-        use_wandb: bool = True
+        use_wandb: bool = False
     ):
         """Initialize metrics tracker"""
         self.save_dir = save_dir
@@ -339,9 +339,18 @@ class MetricsTracker:
 
         # Process each layer
         for layer in model.model.layers:
-            # Count nonzeros
-            attention_nonzero = sum(torch.count_nonzero(p).item() for p in layer.self_attn.parameters())
-            mlp_nonzero = sum(torch.count_nonzero(p).item() for p in layer.mlp.parameters())
+            # Count nonzeros in attention
+            q_nonzero = torch.count_nonzero(layer.self_attn.q_proj.weight).item()
+            k_nonzero = torch.count_nonzero(layer.self_attn.k_proj.weight).item()
+            v_nonzero = torch.count_nonzero(layer.self_attn.v_proj.weight).item()
+            o_nonzero = torch.count_nonzero(layer.self_attn.o_proj.weight).item()
+            attention_nonzero = q_nonzero + k_nonzero + v_nonzero + o_nonzero
+            
+            # Count nonzeros in MLP
+            gate_nonzero = torch.count_nonzero(layer.mlp.gate_proj.weight).item()
+            up_nonzero = torch.count_nonzero(layer.mlp.up_proj.weight).item()
+            down_nonzero = torch.count_nonzero(layer.mlp.down_proj.weight).item()
+            mlp_nonzero = gate_nonzero + up_nonzero + down_nonzero
             
             total_attention_nonzero += attention_nonzero
             total_mlp_nonzero += mlp_nonzero

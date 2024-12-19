@@ -1,2 +1,11 @@
 /models/Llama-3.2-1B-Instruct
 /experiments/results/final_model
+/experiments/results/sparsified_models/
+/experiments/results/sparsified_models/sparsified_model_at_*%/config.json
+/experiments/results/sparsified_models/sparsified_model_at_*%/model.safetensors
+/experiments/results/sparsified_models/sparsified_model_at_*%/special_tokens_map.json
+/experiments/results/sparsified_models/sparsified_model_at_*%/tokenizer.json
+/experiments/results/sparsified_models/sparsified_model_at_*%/tokenizer_config.json
+/experiments/results/sparsified_models/sparsified_model_at_*%/generation_config.json
+/archive
+

@@ -37,7 +37,7 @@ pruning:
     hidden_size: 768
     num_heads: 12
     mlp_ratio: 4
-    mlp_group_size: 1  # Size of MLP neuron groups
+    mlp_group_size: 4 
     layer_percentage: 100
   
   # Importance scoring configuration

@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 from src.model_loader import ModelLoader
+from src.zero_out import ProgressiveSparsifier
 from src.pruning_units import DependencyGraphBuilder
 from src.importance_scorer import ImportanceScorer
 from src.adaptive_pruner import StructuralPruner, PruningResult
@@ -336,6 +337,16 @@ class PruningPipeline:
             logger.error(f"Error saving results: {str(e)}")
             raise
     
+    def _log_timing_results(self, total_time: float, stage_times: Dict[str, float]):
+        """Log detailed timing results"""
+        logger.info("\n=== Experiment Timing ===")
+        logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
+        logger.info("\nStage-wise timing:")
+        for stage, duration in stage_times.items():
+            percentage = (duration / total_time) * 100
+            logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
+
+
     def run(self):
         """Execute the complete pruning pipeline"""
         start_time = time.time()
@@ -343,17 +354,21 @@ class PruningPipeline:
         try:
             # 1. Load Model and Data
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Loading model and data...")
             model, tokenizer, eval_dataloader = self._setup_model_and_data()
             stage_times['model_loading'] = time.time() - stage_start
         
             # 2. Initial Model Evaluation
+            logger.info("\n" + "="*50)
+            logger.info("Initial evaluation....")
             stage_start = time.time()
             initial_metrics, metrics_tracker = self._handle_initial_evaluation(model, tokenizer)
             stage_times['initial_evaluation'] = time.time() - stage_start
             
             # 3. Build Pruning Units
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Creating pruning units...")
             layer_percent = self.config['pruning']['dependency'].get('layer_percentage', 100.0)
             pruning_units = self._create_pruning_units(model, layer_percent)
@@ -361,14 +376,40 @@ class PruningPipeline:
             
             # 4. Calculate Importance Scores
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Handling importance scores...")
             pruning_units = self._handle_importance_scores(
                 model, tokenizer, eval_dataloader, pruning_units
             )
             stage_times['importance_scoring'] = time.time() - stage_start
             
+             # 4.5 Progressive Sparsification Analysis
+            # stage_start = time.time()
+            # logger.info("\n" + "="*50)
+            # logger.info("Starting Progressive Sparsification Analysis")
+            
+            # sparsifier = ProgressiveSparsifier(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     save_dir=self.save_dir / 'sparsified_models'
+            # )
+            
+            # try:
+            #     sparsify_timing = sparsifier.sparsify(pruning_units)
+            #     stage_times['progressive_sparsification'] = time.time() - stage_start
+            #     # Add detailed timings
+            #     for timing_key, timing_value in sparsify_timing.items():
+            #         stage_times[f'sparsify_{timing_key}'] = timing_value
+                    
+            #     logger.info("\nProgressive sparsification completed successfully")
+                
+            # except Exception as e:
+            #     logger.error(f"Error during progressive sparsification: {str(e)}")
+            #     logger.warning("Continuing with main pruning pipeline...")
+
             # 5. Setup Pruner
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Setting up progressive pruner...")
             pruner = StructuralPruner(
                 model=model,
@@ -380,12 +421,14 @@ class PruningPipeline:
             
             # 6. Run Pruning
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Starting progressive pruning...")
             pruning_result = pruner.optimize_pruning(pruning_units)
             stage_times['pruning'] = time.time() - stage_start
             
             # 7. Save Results
             stage_start = time.time()
+            logger.info("\n" + "="*50)
             logger.info("Saving final results...")
             save_path = self.save_dir / 'final_model'
             pruner.save_model(pruning_result, tokenizer, save_path)
@@ -413,14 +456,7 @@ class PruningPipeline:
             if self.config['training']['logging']['use_wandb']:
                 wandb.finish()
 
-    def _log_timing_results(self, total_time: float, stage_times: Dict[str, float]):
-        """Log detailed timing results"""
-        logger.info("\n=== Experiment Timing ===")
-        logger.info(f"Total experiment time: {timedelta(seconds=int(total_time))}")
-        logger.info("\nStage-wise timing:")
-        for stage, duration in stage_times.items():
-            percentage = (duration / total_time) * 100
-            logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
+    
 
 def main():
     parser = argparse.ArgumentParser(description='Run pruning pipeline')

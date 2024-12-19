@@ -1,0 +1,119 @@
+{
+  "os":  "Linux-5.15.161-ql-generic-13.0-14-x86_64-with-glibc2.35",
+  "python":  "CPython 3.10.12",
+  "startedAt":  "2024-12-19T20:00:28.800720Z",
+  "program":  "/home/daniel.gebre/Thesis/LLM-Compression/src/evaluate.py",
+  "codePath":  "src/evaluate.py",
+  "git":  {
+    "remote":  "https://dannymeb:@github.com/DannyMeb/LLM-Compression.git",
+    "commit":  "9fbe9dc8ccb96473b2cb5668d586fec0eff2c272"
+  },
+  "email":  "daniwalker881@gmail.com",
+  "root":  "/home/daniel.gebre/Thesis/LLM-Compression",
+  "host":  "gpu-50",
+  "executable":  "/usr/bin/python3",
+  "codePathLocal":  "src/evaluate.py",
+  "cpu_count":  128,
+  "cpu_count_logical":  256,
+  "gpu":  "NVIDIA A100-SXM4-40GB",
+  "gpu_count":  4,
+  "disk":  {
+    "/":  {
+      "total":  "1073741824",
+      "used":  "21078016"
+    }
+  },
+  "memory":  {
+    "total":  "270256979968"
+  },
+  "cpu":  {
+    "count":  128,
+    "countLogical":  256
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA A100-SXM4-40GB",
+      "memoryTotal":  "42949672960",
+      "cudaCores":  6912,
+      "architecture":  "Ampere"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-40GB",
+      "memoryTotal":  "42949672960",
+      "cudaCores":  6912,
+      "architecture":  "Ampere"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-40GB",
+      "memoryTotal":  "42949672960",
+      "cudaCores":  6912,
+      "architecture":  "Ampere"
+    },
+    {
+      "name":  "NVIDIA A100-SXM4-40GB",
+      "memoryTotal":  "42949672960",
+      "cudaCores":  6912,
+      "architecture":  "Ampere"
+    }
+  ],
+  "slurm":  {
+    "cluster_name":  "mbz-ciai",
+    "conf":  "/etc/qlustar/common/slurm-llnl/slurm.conf",
+    "cpu_bind":  "quiet,mask_cpu:0x0000000000000001000000000000000000000000000000010000000000000000",
+    "cpu_bind_list":  "0x0000000000000001000000000000000000000000000000010000000000000000",
+    "cpu_bind_type":  "mask_cpu:",
+    "cpu_bind_verbose":  "quiet",
+    "cpus_on_node":  "2",
+    "gpus_on_node":  "1",
+    "gtids":  "0",
+    "job_account":  "cscc-users",
+    "job_cpus_per_node":  "1",
+    "job_end_time":  "1734665316",
+    "job_gid":  "2012",
+    "job_group":  "cscc-users",
+    "job_id":  "87714",
+    "job_name":  "bash",
+    "job_nodelist":  "gpu-50",
+    "job_num_nodes":  "1",
+    "job_partition":  "cscc-gpu-p",
+    "job_qos":  "cscc-gpu-qos",
+    "job_start_time":  "1734622116",
+    "job_uid":  "2503",
+    "job_user":  "daniel.gebre",
+    "jobid":  "87714",
+    "launch_node_ipaddr":  "192.168.62.241",
+    "localid":  "0",
+    "mpi_type":  "pmix",
+    "nnodes":  "1",
+    "nodeid":  "0",
+    "nodelist":  "gpu-50",
+    "nprocs":  "1",
+    "ntasks":  "1",
+    "pmix_mapping_serv":  "(vector,(0,1,1))",
+    "pmixp_abort_agent_port":  "39801",
+    "prio_process":  "0",
+    "procid":  "0",
+    "pty_port":  "33747",
+    "pty_win_col":  "309",
+    "pty_win_row":  "14",
+    "script_context":  "prolog_task",
+    "srun_comm_host":  "192.168.62.241",
+    "srun_comm_port":  "35987",
+    "step_gpus":  "2",
+    "step_id":  "0",
+    "step_launcher_port":  "35987",
+    "step_nodelist":  "gpu-50",
+    "step_num_nodes":  "1",
+    "step_num_tasks":  "1",
+    "step_tasks_per_node":  "1",
+    "stepid":  "0",
+    "submit_dir":  "/home/daniel.gebre/Thesis/LLM-Compression",
+    "submit_host":  "ciai-login-1",
+    "task_pid":  "1352128",
+    "tasks_per_node":  "1",
+    "topology_addr":  "gpu-50",
+    "topology_addr_pattern":  "node",
+    "umask":  "0022"
+  },
+  "cudaVersion":  "12.4"
+}

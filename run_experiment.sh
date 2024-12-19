@@ -147,7 +147,7 @@ mkdir -p experiments/results
     echo "GPU Information:"
     nvidia-smi
     echo "=== Running Pipeline ==="
-    python run_pipeline.py --config config/config.yaml
+    python3 run_pipeline.py --config config/config.yaml
 } 2>&1 | tee experiments/results/experiment.log
 
 if [ ${PIPESTATUS[0]} -eq 0 ]; then
