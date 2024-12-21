@@ -50,7 +50,7 @@ class ModelArguments:
         metadata={"help": "Maximum number of training samples"}
     )
     max_eval_samples: Optional[int] = field(
-        default=128,
+        default=64,  # Reduced from 128
         metadata={"help": "Maximum number of evaluation samples"}
     )
     block_size: int = field(
@@ -58,7 +58,7 @@ class ModelArguments:
         metadata={"help": "Size of the blocks the dataset is split into"}
     )
     batch_size: int = field(
-        default=8,
+        default=2,  # Reduced from 8
         metadata={"help": "Batch size per GPU"}
     )
     do_eval: bool = field(
@@ -109,26 +109,67 @@ def get_model_path():
     return model_path, output_dir
 
 def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArguments:
-    """Setup training arguments"""
+    """Setup training arguments with memory optimizations"""
     return TrainingArguments(
         output_dir=str(output_dir),
         per_device_train_batch_size=args.batch_size,
-        gradient_accumulation_steps=4,
+        per_device_eval_batch_size=1,
+        gradient_accumulation_steps=8,
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
-        warmup_steps=5,
+        warmup_steps=100,  # Increased warmup steps
         logging_steps=10,
         save_steps=50,
-        eval_steps=10,
+        eval_steps=50,
         evaluation_strategy="steps" if args.do_eval else "no",
         save_strategy="steps",
-        save_total_limit=3,
+        save_total_limit=2,
         load_best_model_at_end=args.do_eval,
         fp16=True,
+        half_precision_backend="auto",
+        bf16=False,
         optim="adamw_torch",
+        max_grad_norm=0.3,
+        gradient_checkpointing=True,
+        remove_unused_columns=False,  # Added to prevent column removal
+        ddp_find_unused_parameters=False,  # Optimize DDP training
     )
 
+def process_dataset(dataset, tokenizer, max_samples, block_size):
+    """Process dataset in chunks to manage memory"""
+    def tokenize_function(examples):
+        return tokenizer(
+            examples["text"],
+            truncation=True,
+            max_length=block_size,
+            padding="max_length",
+            return_tensors=None,
+        )
+
+    processed = []
+    chunk_size = 1000  # Process in smaller chunks
+    
+    for i in range(0, max_samples, chunk_size):
+        chunk = list(dataset.take(min(chunk_size, max_samples - i)))
+        chunk_processed = [tokenize_function(example) for example in chunk]
+        
+        # Add labels for causal language modeling
+        for example in chunk_processed:
+            example["labels"] = example["input_ids"].copy()
+        
+        processed.extend(chunk_processed)
+        
+        # Clear memory
+        torch.cuda.empty_cache()
+        
+        logger.info(f"Processed {len(processed)}/{max_samples} examples")
+    
+    return processed
+
 def main():
+    # Set CUDA memory split size
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+    
     # Suppress codecarbon logs
     logging.getLogger('codecarbon').setLevel(logging.WARNING)
     
@@ -177,11 +218,12 @@ def main():
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True,
             device_map='auto',
-            use_safetensors=True
+            use_safetensors=True,
+            max_memory={0: "35GB"},  # Limit GPU memory usage
         )
-        
-        # Enable gradient checkpointing
-        model.gradient_checkpointing_enable()
+
+        # Ensure model parameters are set up for training
+        model.enable_input_require_grads()
         
         logger.info(f"Successfully loaded model from {model_path}")
         
@@ -189,18 +231,26 @@ def main():
         logger.error(f"Error loading model: {e}")
         raise
 
-    # Setup LoRA
+    # Setup LoRA with modified configuration
     logger.info("Setting up LoRA...")
     lora_config = LoraConfig(
         r=8,
         lora_alpha=16,
-        target_modules=["gate_proj", "up_proj", "down_proj"],
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         lora_dropout=0.05,
         bias="none",
-        task_type="CAUSAL_LM"
+        task_type="CAUSAL_LM",
+        inference_mode=False
     )
     
+    # Create PEFT model
     model = get_peft_model(model, lora_config)
+    
+    # Ensure all trainable parameters require gradients
+    for param in model.parameters():
+        if param.requires_grad:
+            param.data = param.data.to(torch.float32)
+    
     model.print_trainable_parameters()
 
     # Load dataset
@@ -212,43 +262,25 @@ def main():
         cache_dir='cache'
     )
 
-    # Tokenization function
-    def tokenize_function(examples):
-        return tokenizer(
-            examples["text"],
-            truncation=True,
-            max_length=model_args.block_size,
-            padding="max_length",
-            return_tensors=None,  # Return as lists
-        )
-
     # Process datasets
     logger.info("Processing training dataset...")
-    train_dataset = dataset["train"].map(
-        tokenize_function,
-        remove_columns=dataset["train"].column_names
-    ).take(model_args.max_train_samples)
+    train_dataset = process_dataset(
+        dataset["train"],
+        tokenizer,
+        model_args.max_train_samples,
+        model_args.block_size
+    )
 
     if model_args.do_eval:
         logger.info("Processing validation dataset...")
-        validation_dataset = dataset["validation"].map(
-            tokenize_function,
-            remove_columns=dataset["validation"].column_names
-        ).take(model_args.max_eval_samples)
+        validation_dataset = process_dataset(
+            dataset["validation"],
+            tokenizer,
+            model_args.max_eval_samples,
+            model_args.block_size
+        )
     else:
         validation_dataset = None
-
-    # Convert to list
-    train_dataset = list(train_dataset)
-    if validation_dataset:
-        validation_dataset = list(validation_dataset)
-
-    # Add labels for causal language modeling
-    for example in train_dataset:
-        example["labels"] = example["input_ids"].copy()
-    if validation_dataset:
-        for example in validation_dataset:
-            example["labels"] = example["input_ids"].copy()
 
     logger.info(f"Loaded {len(train_dataset)} training examples")
     if validation_dataset:

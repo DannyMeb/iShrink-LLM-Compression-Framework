@@ -107,13 +107,13 @@ class PruningPipeline:
             model_loader = ModelLoader(config=self.config['model'])
             model, tokenizer = model_loader.load()
             
-            eval_dataloader, _ = create_mmlu_dataloader(
-                tokenizer=tokenizer,
-                config=self.config,
-                split="validation"
-            )
+            # eval_dataloader, _ = create_mmlu_dataloader(
+            #     tokenizer=tokenizer,
+            #     config=self.config,
+            #     split="validation"
+            # )
             
-            return model, tokenizer, eval_dataloader
+            return model, tokenizer, None
             
         except Exception as e:
             logger.error(f"Error setting up model and data: {str(e)}")
@@ -415,7 +415,7 @@ class PruningPipeline:
                 model=model,
                 config=self.config,
                 attention_sparsity=0, 
-                mlp_sparsity=0.15
+                mlp_sparsity=0.35
             )
             stage_times['setup_pruner'] = time.time() - stage_start
             
