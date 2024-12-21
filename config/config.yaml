@@ -29,7 +29,7 @@ pruning:
     compression_target: 0.98
     min_accuracy: 0.40
     attention_sparsity: 0.0  
-    mlp_sparsity: 0.3      
+    mlp_sparsity: 0.05     
     max_pruned_heads: 100
   
   # Dependency configuration
