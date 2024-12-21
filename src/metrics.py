@@ -502,8 +502,8 @@ class MetricsTracker:
                 cost_metrics=cost_metrics 
             )
             
-            if verbose:
-                self._log_metrics(metrics)
+            # if verbose:
+            #     self._log_metrics(metrics)
             
             # Log to wandb if enabled
             if self.use_wandb:

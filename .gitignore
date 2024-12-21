@@ -8,4 +8,4 @@
 /experiments/results/sparsified_models/sparsified_model_at_*%/tokenizer_config.json
 /experiments/results/sparsified_models/sparsified_model_at_*%/generation_config.json
 /archive
-
+/experiments/results/finetuned_models
