@@ -193,7 +193,7 @@ def setup_model(model_path: Path, args: ModelArguments):
     config = LoraConfig(
         r=8,
         lora_alpha=16,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  # Added k_proj and o_proj
+        target_modules=[ "gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj"
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
@@ -224,7 +224,7 @@ def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArgum
         eval_steps=50,
         evaluation_strategy="steps" if args.do_eval else "no",
         save_strategy="steps",
-        save_total_limit=2,
+        save_total_limit=10,
         load_best_model_at_end=args.do_eval,
         fp16=True,
         half_precision_backend="auto",
