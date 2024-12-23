@@ -1,30 +1,24 @@
 #!/bin/bash
 
-# Ensure script exits on any error
 set -e
 
-# Set environment variables
 export CUDA_VISIBLE_DEVICES=0
 export WANDB_MODE=disabled
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
-# Create output directories if they don't exist
+# Create output directories
 mkdir -p experiments/results/finetuned_models
 mkdir -p cache
 
-# Optimized training parameters
+# Training parameters
 LEARNING_RATE=2e-5
 NUM_EPOCHS=4
 BLOCK_SIZE=2048
-BATCH_SIZE=2             # Reduced batch size for memory efficiency
-MAX_TRAIN_SAMPLES=30000
-MAX_EVAL_SAMPLES=64      # Reduced evaluation samples
-TRAINING_PERCENTAGE=50   # Use 70% of training data
+BATCH_SIZE=2
+MAX_TRAIN_SAMPLES=300
+MAX_EVAL_SAMPLES=64
+TRAINING_PERCENTAGE=50
 
-# Optional: Clean up old checkpoints (uncomment if needed)
-# rm -rf experiments/results/finetuned_models/*
-
-# Print training configuration
 echo "Starting training with the following configuration:"
 echo "Learning Rate: $LEARNING_RATE"
 echo "Number of Epochs: $NUM_EPOCHS"
@@ -34,7 +28,6 @@ echo "Max Train Samples: $MAX_TRAIN_SAMPLES"
 echo "Max Eval Samples: $MAX_EVAL_SAMPLES"
 echo "Training Data Percentage: $TRAINING_PERCENTAGE%"
 
-# Run the finetuning script
 python3 src/healer.py \
     --learning_rate $LEARNING_RATE \
     --num_train_epochs $NUM_EPOCHS \
@@ -45,11 +38,8 @@ python3 src/healer.py \
     --training_percentage $TRAINING_PERCENTAGE \
     --do_eval
 
-# Check if training completed successfully
 if [ $? -eq 0 ]; then
     echo "Training completed successfully!"
-    
-    # Print GPU memory status after training
     echo "Final GPU memory status:"
     nvidia-smi
 else

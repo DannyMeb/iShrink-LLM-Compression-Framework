@@ -1,4 +1,4 @@
-# Evaluate.py
+# evaluate.py
 
 import os
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 from peft import PeftModel, PeftConfig
 
 # Setup project paths
-PROJECT_ROOT = Path("/home/daniel.gebre/Thesis/LLM-Compression")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.model_loader import ModelLoader
@@ -113,12 +113,10 @@ def get_model_paths(config):
     else:  # model_choice == 3
         finetuned_choice = get_finetuned_model_choice()
         if finetuned_choice == 1:
-            # For finetuned pruned model
             model_path = save_dir / 'final_model'
             adapter_path = save_dir / 'finetuned_models' / 'finetuned_pruned_model'
             model_type = "finetuned_pruned"
         else:
-            # For finetuned sparsified model
             sparsity = get_sparsity_level()
             model_path = save_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
             adapter_path = save_dir / 'finetuned_models' / f"sparsified_model_at_{sparsity}%_finetuned"
@@ -149,34 +147,86 @@ def load_model(model_path: Path, adapter_path: Path | None, config: dict, hf_tok
         # If adapter path is provided, load and apply LoRA
         if adapter_path:
             logger.info(f"Loading and applying LoRA adapter from: {adapter_path}")
-            model = PeftModel.from_pretrained(
-                base_model,
-                adapter_path,
-                is_trainable=False
-            )
-            # Get the underlying model for metrics calculation
-            model.model = base_model.model
-            logger.info("Successfully applied LoRA adapter")
+            
+            try:
+                # Load the model with LoRA adapter
+                model = PeftModel.from_pretrained(
+                    base_model,
+                    adapter_path,
+                    is_trainable=False,
+                    use_safetensors=False
+                )
+                
+                # Verify LoRA loading
+                if verify_lora_loading(model):
+                    logger.info("LoRA adapter successfully verified")
+                    # Merge LoRA weights into base model
+                    logger.info("Merging LoRA weights into base model...")
+                    model = model.merge_and_unload()
+                    logger.info("Successfully merged LoRA weights")
+                else:
+                    logger.error("LoRA adapter verification failed")
+                    raise RuntimeError("Failed to properly load LoRA adapter")
+                
+            except Exception as e:
+                logger.error(f"Error loading LoRA adapter: {str(e)}")
+                logger.error("Falling back to base model")
+                model = base_model
         else:
             model = base_model
         
         return model, tokenizer
         
     except Exception as e:
-        logger.error(f"Error loading model: {e}")
+        logger.error(f"Error loading model: {str(e)}")
         raise
 
+def verify_lora_loading(model):
+    """Verify that LoRA adapter is properly loaded"""
+    if hasattr(model, 'peft_config'):
+        logger.info("LoRA configuration found:")
+        logger.info(f"Active adapters: {model.active_adapters}")
+        
+        if not hasattr(model.peft_config['default'], 'r'):
+            logger.warning("LoRA rank not found in config")
+            return False
+            
+        logger.info(f"LoRA rank: {model.peft_config['default'].r}")
+        
+        # Check for LoRA parameters
+        lora_params_found = False
+        total_params = 0
+        nonzero_params = 0
+        
+        for name, param in model.named_parameters():
+            if 'lora' in name:
+                total_params += 1
+                if not torch.all(param == 0):
+                    nonzero_params += 1
+                logger.info(f"Found LoRA parameters: {name} (shape: {param.shape}, nonzero: {torch.count_nonzero(param).item()})")
+                lora_params_found = True
+        
+        if not lora_params_found:
+            logger.warning("No LoRA parameters found in model")
+            return False
+        
+        if nonzero_params == 0:
+            logger.warning("All LoRA parameters are zero")
+            return False
+            
+        logger.info(f"Found {nonzero_params}/{total_params} LoRA parameters with non-zero values")
+        return nonzero_params > 0
+        
+    return False
+
 def save_evaluation_results(model_path: Path, adapter_path: Path | None, results: dict):
-    """Save evaluation results in the model's directory"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    eval_filename = f'evaluation_results.json'
-    
+    """Save evaluation results"""
     # Save in appropriate directory (adapter directory for finetuned models)
     save_path = adapter_path if adapter_path else model_path
     eval_path = save_path / 'evaluations'
     eval_path.mkdir(exist_ok=True)
     
-    result_file = eval_path / eval_filename
+    result_file = eval_path / 'evaluation_results.json'
     with open(result_file, 'w') as f:
         json.dump(results, f, indent=2)
     
@@ -205,7 +255,7 @@ def verify_model(config_path: str = "config/config.yaml"):
             with open(model_path / "sparsification_stats.json") as f:
                 sparsification_stats = json.load(f)
         
-        # Load model and tokenizer
+        # Load model with fixed LoRA handling
         model, tokenizer = load_model(model_path, adapter_path, config, hf_token)
         
         # Create evaluation dataloader
@@ -241,21 +291,12 @@ def verify_model(config_path: str = "config/config.yaml"):
         logger.info(f"Accuracy: {metrics.accuracy:.4f}")
         logger.info(f"Latency: {metrics.latency:.2f} ms")
         logger.info(f"Throughput: {metrics.throughput:.2f} samples/second")
-        logger.info(f"GPU Allocated: {metrics.gpu_memory_mb:.2f} mb")
-
+        logger.info(f"GPU Memory: {metrics.gpu_memory_mb:.2f} MB")
         
         logger.info("\n=== Model Size ===")
         logger.info(f"Total Parameters: {metrics.parameter_count:,}")
         logger.info(f"Active Parameters: {metrics.active_parameter_count:,}")
         logger.info(f"Overall Sparsity: {metrics.sparsity * 100:.2f}%")
-        
-        logger.info("\n=== Component Analysis ===")
-        logger.info(f"Attention Parameters: {metrics.attention_params:,}")
-        logger.info(f"Attention Nonzero: {metrics.attention_nonzero:,}")
-        logger.info(f"Attention Sparsity: {metrics.attention_sparsity * 100:.2f}%")
-        logger.info(f"MLP Parameters: {metrics.mlp_params:,}")
-        logger.info(f"MLP Nonzero: {metrics.mlp_nonzero:,}")
-        logger.info(f"MLP Sparsity: {metrics.mlp_sparsity * 100:.2f}%")
         
         # Prepare results dictionary
         results = {
@@ -278,16 +319,6 @@ def verify_model(config_path: str = "config/config.yaml"):
                     'memory_footprint': metrics.memory_footprint,
                     'activation_memory_mb': metrics.activation_memory_mb
                 },
-                'attention': {
-                    'params': metrics.attention_params,
-                    'nonzero': metrics.attention_nonzero,
-                    'sparsity': metrics.attention_sparsity
-                },
-                'mlp': {
-                    'params': metrics.mlp_params,
-                    'nonzero': metrics.mlp_nonzero,
-                    'sparsity': metrics.mlp_sparsity
-                },
                 'compute_metrics': vars(metrics.compute_metrics),
                 'cost_metrics': vars(metrics.cost_metrics)
             }
@@ -303,5 +334,14 @@ def verify_model(config_path: str = "config/config.yaml"):
     finally:
         torch.cuda.empty_cache()
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description='Evaluate model performance')
+    parser.add_argument('--config', type=str, default='config/config.yaml',
+                       help='Path to configuration file')
+    args = parser.parse_args()
+    
+    verify_model(args.config)
+
 if __name__ == "__main__":
-    verify_model()
+    main()
