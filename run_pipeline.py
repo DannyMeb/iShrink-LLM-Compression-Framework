@@ -21,9 +21,8 @@ from src.zero_out import ProgressiveSparsifier
 from src.pruning_units import DependencyGraphBuilder
 from src.importance_scorer import ImportanceScorer
 from src.adaptive_pruner import StructuralPruner, PruningResult
-from src.metrics import MetricsTracker, ModelMetrics
+from src.metrics import MetricsTracker
 from src.data import create_mmlu_dataloader
-
 
 # Setup logging
 logging.basicConfig(
@@ -33,9 +32,9 @@ logging.basicConfig(
 
 # Configure specific loggers
 logger = logging.getLogger(__name__)
-logging.getLogger('lm-eval').setLevel(logging.ERROR)  # Suppress lm-eval warnings
-logging.getLogger('transformers').setLevel(logging.WARNING)  # Suppress transformer warnings if needed
-logging.getLogger('torch').setLevel(logging.WARNING)  # Suppress torch warnings if needed
+logging.getLogger('lm-eval').setLevel(logging.ERROR)
+logging.getLogger('transformers').setLevel(logging.WARNING)
+logging.getLogger('torch').setLevel(logging.WARNING)
 
 @dataclass
 class PipelineState:
@@ -43,8 +42,6 @@ class PipelineState:
     model: torch.nn.Module
     tokenizer: Any
     eval_dataloader: torch.utils.data.DataLoader
-    initial_metrics: ModelMetrics
-    metrics_tracker: MetricsTracker
     pruning_units: list
 
 class PruningPipeline:
@@ -57,6 +54,13 @@ class PruningPipeline:
         self.save_dir = Path(self.config['system']['save_dir'])
         self.save_dir.mkdir(parents=True, exist_ok=True)
         
+        # Get model name for consistent directory structure
+        self.model_name = self.config['model']['name'].split('/')[-1]
+        
+        # Create model-specific base directory
+        self.model_base_dir = self.save_dir / self.model_name
+        self.model_base_dir.mkdir(parents=True, exist_ok=True)
+        
         # Initialize wandb if enabled
         if self.config['training']['logging']['use_wandb']:
             wandb.init(
@@ -68,6 +72,8 @@ class PruningPipeline:
         self._set_random_seeds()
         
         logger.info(f"Initialized pruning pipeline with device: {self.device}")
+        logger.info(f"Using model: {self.model_name}")
+        logger.info(f"Saving results to: {self.model_base_dir}")
     
     def _set_random_seeds(self):
         """Set random seeds for reproducibility"""
@@ -90,56 +96,22 @@ class PruningPipeline:
             if section not in config:
                 raise ValueError(f"Missing required config section: {section}")
     
-    def _setup_metrics_tracker(self, tokenizer) -> MetricsTracker:
-        """Setup metrics tracking with appropriate configuration"""
-        logger.info("Setting up metrics tracker...")
-        return MetricsTracker(
-            save_dir=self.save_dir,
-            device=self.device,
-            tokenizer=tokenizer,
-            config=self.config,
-            use_wandb=self.config['training']['logging']['use_wandb']
-        )
-    
     def _setup_model_and_data(self) -> Tuple[torch.nn.Module, Any, torch.utils.data.DataLoader]:
         """Setup model and data loaders"""
         try:
             model_loader = ModelLoader(config=self.config['model'])
             model, tokenizer = model_loader.load()
             
-            # eval_dataloader, _ = create_mmlu_dataloader(
-            #     tokenizer=tokenizer,
-            #     config=self.config,
-            #     split="validation"
-            # )
+            eval_dataloader, _ = create_mmlu_dataloader(
+                tokenizer=tokenizer,
+                config=self.config,
+                split="validation"
+            )
             
-            return model, tokenizer, None
+            return model, tokenizer, eval_dataloader
             
         except Exception as e:
             logger.error(f"Error setting up model and data: {str(e)}")
-            raise
-    
-    def _handle_initial_evaluation(self, model: torch.nn.Module, tokenizer: Any) -> Tuple[ModelMetrics, MetricsTracker]:
-        metrics_tracker = self._setup_metrics_tracker(tokenizer)
-        initial_metrics_path = self.save_dir / 'metrics' / 'initial_metrics.json'
-        
-        try:
-            if initial_metrics_path.exists():
-                logger.info("Found cached initial metrics, loading...")
-                initial_metrics = metrics_tracker.load_metrics('initial_metrics.json')
-            else:
-                logger.info("No cached metrics found. Evaluating initial model...")
-                initial_metrics = metrics_tracker.evaluate_model(model, tokenizer, verbose=True)  # Only log here
-                metrics_tracker.save_metrics(initial_metrics, 'initial_metrics.json')
-            
-            return initial_metrics, metrics_tracker
-                
-        except Exception as e:
-            logger.error(f"Error during initial model evaluation: {str(e)}")
-            if initial_metrics_path.exists():
-                logger.warning("Error with cached metrics. Removing cache and retrying...")
-                initial_metrics_path.unlink()
-                return self._handle_initial_evaluation(model, tokenizer)
             raise
     
     def _create_pruning_units(self, model: torch.nn.Module, layer_percent: float) -> list:
@@ -153,8 +125,9 @@ class PruningPipeline:
     
     def _handle_importance_scores(self, model, tokenizer, eval_dataloader, pruning_units):
         """Calculate or load importance scores"""
-        scores_path = self.save_dir / 'importance_scores' / 'importance_scores.json'
+        scores_path = self.model_base_dir / 'importance_scores' / 'importance_scores.json'
         temp_scores_path = scores_path.with_suffix('.tmp.json')
+        scores_path.parent.mkdir(parents=True, exist_ok=True)
         
         try:
             if self._are_importance_scores_valid(scores_path, pruning_units):
@@ -252,17 +225,9 @@ class PruningPipeline:
         logger.info(f"Successfully loaded importance scores for {len(pruning_units)} units")
         return pruning_units
 
-
-    def save_results(self, model: torch.nn.Module, tokenizer: Any, pruning_result: PruningResult, initial_metrics: ModelMetrics):
-        """Save pruning results based on current PruningResult structure"""
+    def save_pruning_results(self, pruning_result: PruningResult, save_path: Path):
+        """Save pruning results and stats"""
         try:
-            # Save the final model
-            # final_model_dir = self.save_dir / 'final_model'
-            # final_model_dir.mkdir(exist_ok=True)
-            # model.save_pretrained(final_model_dir)
-            # tokenizer.save_pretrained(final_model_dir)
-
-            # Create summary using available attributes from PruningResult
             summary = {
                 'initial_size': {
                     'num_heads': pruning_result.original_size['num_heads'],
@@ -282,27 +247,15 @@ class PruningPipeline:
                     'parameters_after': pruning_result.params_after,
                     'actual_compression': pruning_result.actual_compression
                 },
-                'initial_metrics': {
-                    'accuracy': initial_metrics.accuracy,
-                    'latency': initial_metrics.latency,
-                    'throughput': initial_metrics.throughput,
-                    'parameter_count': initial_metrics.parameter_count,
-                    'active_parameter_count': initial_metrics.active_parameter_count,
-                    'compute_metrics': vars(initial_metrics.compute_metrics),
-                    'cost_metrics': vars(initial_metrics.cost_metrics),
-                    'memory_footprint': initial_metrics.memory_footprint
-                }
-            }
-
-            # Save masks for attention and MLP layers
-            summary['pruning_masks'] = {
-                'attention_masks': {
-                    layer_idx: mask.tolist() 
-                    for layer_idx, mask in pruning_result.attention_mask.items()
-                },
-                'mlp_masks': {
-                    layer_idx: mask.tolist() 
-                    for layer_idx, mask in pruning_result.mlp_mask.items()
+                'pruning_masks': {
+                    'attention_masks': {
+                        layer_idx: mask.tolist() 
+                        for layer_idx, mask in pruning_result.attention_mask.items()
+                    },
+                    'mlp_masks': {
+                        layer_idx: mask.tolist() 
+                        for layer_idx, mask in pruning_result.mlp_mask.items()
+                    }
                 }
             }
 
@@ -323,20 +276,19 @@ class PruningPipeline:
             logger.info(f"Pruned Intermediate Size: {pruning_result.pruned_size['intermediate_size']}")
 
             # Save summary to a JSON file
-            summary_path = self.save_dir / 'pruning_summary.json'
+            summary_path = save_path / 'pruning_summary.json'
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
 
             logger.info(f"\nResults saved to {summary_path}")
             
-            # Log to wandb if enabled
             if self.config['training']['logging']['use_wandb']:
                 wandb.log(summary)
 
         except Exception as e:
-            logger.error(f"Error saving results: {str(e)}")
+            logger.error(f"Error saving pruning results: {str(e)}")
             raise
-    
+
     def _log_timing_results(self, total_time: float, stage_times: Dict[str, float]):
         """Log detailed timing results"""
         logger.info("\n=== Experiment Timing ===")
@@ -345,7 +297,6 @@ class PruningPipeline:
         for stage, duration in stage_times.items():
             percentage = (duration / total_time) * 100
             logger.info(f"{stage}: {timedelta(seconds=int(duration))} ({percentage:.1f}%)")
-
 
     def run(self):
         """Execute the complete pruning pipeline"""
@@ -359,14 +310,7 @@ class PruningPipeline:
             model, tokenizer, eval_dataloader = self._setup_model_and_data()
             stage_times['model_loading'] = time.time() - stage_start
         
-            # 2. Initial Model Evaluation
-            logger.info("\n" + "="*50)
-            logger.info("Initial evaluation....")
-            stage_start = time.time()
-            initial_metrics, metrics_tracker = self._handle_initial_evaluation(model, tokenizer)
-            stage_times['initial_evaluation'] = time.time() - stage_start
-            
-            # 3. Build Pruning Units
+            # 2. Build Pruning Units
             stage_start = time.time()
             logger.info("\n" + "="*50)
             logger.info("Creating pruning units...")
@@ -374,7 +318,7 @@ class PruningPipeline:
             pruning_units = self._create_pruning_units(model, layer_percent)
             stage_times['build_units'] = time.time() - stage_start
             
-            # 4. Calculate Importance Scores
+            # 3. Calculate Importance Scores
             stage_start = time.time()
             logger.info("\n" + "="*50)
             logger.info("Handling importance scores...")
@@ -383,26 +327,23 @@ class PruningPipeline:
             )
             stage_times['importance_scoring'] = time.time() - stage_start
             
-            # 4.5 Progressive Sparsification Analysis
+            # # 4 Progressive Sparsification Analysis
             stage_start = time.time()
             logger.info("\n" + "="*50)
-            logger.info("Starting Progressive Sparsification Analysis")
+            logger.info("Starting Zero-out Sparsification Analysis...")
             
             sparsifier = ProgressiveSparsifier(
                 model=model,
                 tokenizer=tokenizer,
-                save_dir=self.save_dir / 'sparsified_models'
+                save_dir=self.model_base_dir / 'sparsified_models'
             )
             
             try:
                 sparsify_timing = sparsifier.sparsify(pruning_units)
                 stage_times['progressive_sparsification'] = time.time() - stage_start
-                # Add detailed timings
                 for timing_key, timing_value in sparsify_timing.items():
                     stage_times[f'sparsify_{timing_key}'] = timing_value
-                    
                 logger.info("\nProgressive sparsification completed successfully")
-                
             except Exception as e:
                 logger.error(f"Error during progressive sparsification: {str(e)}")
                 logger.warning("Continuing with main pruning pipeline...")
@@ -430,20 +371,27 @@ class PruningPipeline:
             stage_start = time.time()
             logger.info("\n" + "="*50)
             logger.info("Saving final results...")
-            save_path = self.save_dir / 'final_model'
-            pruner.save_model(pruning_result, tokenizer, save_path)
+            
+            pruned_model_dir = self.model_base_dir / 'pruned_model'
+            pruned_model_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save model using pruner with full path
+            pruner.save_model(pruning_result, tokenizer, pruned_model_dir)
+            self.save_pruning_results(pruning_result, pruned_model_dir)
+            
             stage_times['save_results'] = time.time() - stage_start
+            
+            # Cleanup
             del model
             del pruning_result.pruned_model
             torch.cuda.empty_cache()
             
-
-            # 8.  Run verification
-            config_path="config/config.yaml"
+            # 8. Run verification
+            logger.info("\n" + "="*50)
             logger.info("Starting model verification...")
+            config_path = "config/config.yaml"
             verifier = ModelVerifier(config_path)
-            # final_metrics = verifier.verify()
-    
+            
             total_time = time.time() - start_time
             self._log_timing_results(total_time, stage_times)
             
@@ -455,8 +403,6 @@ class PruningPipeline:
         finally:
             if self.config['training']['logging']['use_wandb']:
                 wandb.finish()
-
-    
 
 def main():
     parser = argparse.ArgumentParser(description='Run pruning pipeline')

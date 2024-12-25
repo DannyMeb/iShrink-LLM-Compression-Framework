@@ -1,5 +1,3 @@
-# evaluate.py
-
 import os
 import sys
 import torch
@@ -45,7 +43,7 @@ def get_model_choice():
     while True:
         choice = input("\nWhich model would you like to evaluate?\n"
                       "0. Initial model\n"
-                      "1. Final pruned model\n"
+                      "1. Pruned model\n"
                       "2. Sparsified model\n"
                       "3. Finetuned model\n"
                       "Enter choice (0, 1, 2, or 3): ").strip()
@@ -79,30 +77,30 @@ def get_model_paths(config):
     """Get model paths based on user choice"""
     model_choice = get_model_choice()
     save_dir = PROJECT_ROOT / config['system']['save_dir']
-    models_dir = PROJECT_ROOT / "models/Llama-3.2-1B-Instruct"
+    model_name = config['model']['name'].split('/')[-1]
+    model_base_dir = save_dir / model_name
     
     if model_choice == 0:
-        model_path = models_dir
+        # Initial models are stored in working_dir/models/<model_name>
+        model_path = PROJECT_ROOT / "models" / model_name
         adapter_path = None
         model_type = "initial"
     elif model_choice == 1:
-        model_path = save_dir / 'final_model'
+        # Pruned models are in model-specific directory
+        model_path = model_base_dir / 'pruned_model'
         adapter_path = None
         model_type = "pruned"
     elif model_choice == 2:
+        # Sparsified models are in model-specific directory
         sparsity = get_sparsity_level()
-        model_path_1 = save_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
-        model_path_2 = save_dir / f"sparsified_model_at_{sparsity}%"
+        model_path = model_base_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
         
-        if model_path_1.exists():
-            model_path = model_path_1
-        elif model_path_2.exists():
-            model_path = model_path_2
-        else:
+        if not model_path.exists():
             available_models = []
-            for path in [save_dir, save_dir / 'sparsified_models']:
-                if path.exists():
-                    available_models.extend(p.name for p in path.iterdir() if p.is_dir() and 'sparsified_model_at_' in p.name)
+            sparsified_dir = model_base_dir / 'sparsified_models'
+            if sparsified_dir.exists():
+                available_models.extend(p.name for p in sparsified_dir.iterdir() 
+                                     if p.is_dir() and 'sparsified_model_at_' in p.name)
             
             if available_models:
                 logger.error(f"Available sparsified models: {', '.join(available_models)}")
@@ -113,13 +111,15 @@ def get_model_paths(config):
     else:  # model_choice == 3
         finetuned_choice = get_finetuned_model_choice()
         if finetuned_choice == 1:
-            model_path = save_dir / 'final_model'
-            adapter_path = save_dir / 'finetuned_models' / 'finetuned_pruned_model'
+            # Finetuned pruned model
+            model_path = model_base_dir / 'pruned_model'
+            adapter_path = model_base_dir / 'finetuned_models' / 'finetuned_pruned_model'
             model_type = "finetuned_pruned"
         else:
+            # Finetuned sparsified model
             sparsity = get_sparsity_level()
-            model_path = save_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
-            adapter_path = save_dir / 'finetuned_models' / f"sparsified_model_at_{sparsity}%_finetuned"
+            model_path = model_base_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
+            adapter_path = model_base_dir / 'finetuned_models' / f"sparsified_model_at_{sparsity}%_finetuned"
             model_type = f"finetuned_sparsified_{sparsity}%"
         
         if not model_path.exists():
@@ -147,7 +147,6 @@ def load_model(model_path: Path, adapter_path: Path | None, config: dict, hf_tok
         # If adapter path is provided, load and apply LoRA
         if adapter_path:
             logger.info(f"Loading and applying LoRA adapter from: {adapter_path}")
-            
             try:
                 # Load the model with LoRA adapter
                 model = PeftModel.from_pretrained(
@@ -220,17 +219,28 @@ def verify_lora_loading(model):
     return False
 
 def save_evaluation_results(model_path: Path, adapter_path: Path | None, results: dict):
-    """Save evaluation results"""
-    # Save in appropriate directory (adapter directory for finetuned models)
+    """Save evaluation results in the model's directory"""
+    # Save results in the model's directory under an evaluations subfolder
     save_path = adapter_path if adapter_path else model_path
     eval_path = save_path / 'evaluations'
     eval_path.mkdir(exist_ok=True)
     
-    result_file = eval_path / 'evaluation_results.json'
+    # Save with timestamp for multiple evaluations
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_file = eval_path / f'evaluation_results_{timestamp}.json'
+    
+    # Also save as latest
+    latest_file = eval_path / 'evaluation_results_latest.json'
+    
+    # Save both timestamped and latest version
     with open(result_file, 'w') as f:
         json.dump(results, f, indent=2)
+    with open(latest_file, 'w') as f:
+        json.dump(results, f, indent=2)
     
-    logger.info(f"\nEvaluation results saved to: {result_file}")
+    logger.info(f"\nEvaluation results saved to:")
+    logger.info(f"Latest: {latest_file}")
+    logger.info(f"Timestamped: {result_file}")
 
 def verify_model(config_path: str = "config/config.yaml"):
     """Load and verify model performance"""
@@ -267,9 +277,8 @@ def verify_model(config_path: str = "config/config.yaml"):
         )
         
         # Setup metrics tracker
-        save_dir = PROJECT_ROOT / config['system']['save_dir']
         metrics_tracker = MetricsTracker(
-            save_dir=save_dir,
+            save_dir=model_path / "metrics",  # Save metrics in model directory
             device=device,
             tokenizer=tokenizer,
             config=config,

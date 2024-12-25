@@ -2,8 +2,8 @@
 
 # Model Configuration
 model:
-  name: "meta-llama/Llama-3.2-1B-Instruct"
-  local_path: "models/Llama-3.2-1B-Instruct" 
+  name: "tiiuae/Falcon3-1B-Base" #"meta-llama/Llama-3.2-1B-Instruct" 
+  local_path: "models/Falcon3-1B-Base" #Llama-3.2-1B-Instruct 
   device: "cuda"
   precision: "float16"
   batch_size: 8

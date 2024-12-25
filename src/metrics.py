@@ -174,7 +174,7 @@ class MetricsTracker:
                 "pretrained": model,
                 "tokenizer": tokenizer,
                 "device": self.device,
-                "batch_size": 8,
+                "batch_size": 16,
                 "trust_remote_code": True
             }
             
@@ -183,9 +183,9 @@ class MetricsTracker:
             results = evaluator.simple_evaluate(
                 model=hf_model,
                 tasks=["mmlu"],
-                num_fewshot=4,
-                limit=0.1,
-                bootstrap_iters=10000,
+                num_fewshot=5,
+                limit=0.5,
+                # bootstrap_iters=10000,
                 device=str(self.device)
             )
             

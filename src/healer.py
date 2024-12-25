@@ -215,7 +215,7 @@ def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArgum
         output_dir=str(output_dir),
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=1,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=2,
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_steps=100,
