@@ -327,7 +327,7 @@ class PruningPipeline:
             )
             stage_times['importance_scoring'] = time.time() - stage_start
             
-            # # 4 Progressive Sparsification Analysis
+            # 4 Progressive Sparsification Analysis
             stage_start = time.time()
             logger.info("\n" + "="*50)
             logger.info("Starting Zero-out Sparsification Analysis...")
@@ -356,7 +356,8 @@ class PruningPipeline:
                 model=model,
                 config=self.config,
                 attention_sparsity=0, 
-                mlp_sparsity=0.35
+                mlp_sparsity=0.35,
+                apply_head_collapse=True 
             )
             stage_times['setup_pruner'] = time.time() - stage_start
             

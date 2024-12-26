@@ -1,5 +1,5 @@
 {
-  "_name_or_path": "models/Falcon3-1B-Base",
+  "_name_or_path": "tiiuae/Falcon3-1B-Base",
   "activation": "swiglu",
   "architectures": [
     "LlamaForCausalLM"

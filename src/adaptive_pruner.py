@@ -1,5 +1,3 @@
-#adaptive_pruner.py
-
 import torch
 import logging
 from dataclasses import dataclass
@@ -30,7 +28,8 @@ class StructuralPruner:
         model: torch.nn.Module,
         config: Dict[str, Any],
         attention_sparsity: float = 0.25,
-        mlp_sparsity: float = 0.25
+        mlp_sparsity: float = 0.25,
+        apply_head_collapse: bool = False
     ):
         """
         Initialize pruner with separate sparsity values for attention and MLP.
@@ -40,6 +39,7 @@ class StructuralPruner:
             config: Configuration dictionary
             attention_sparsity: Fraction of attention heads to remove (0-1)
             mlp_sparsity: Fraction of MLP units to remove (0-1)
+            apply_head_collapse: Whether to apply head collapsing during pruning
         """
         # Validate sparsity values
         if not (0 <= attention_sparsity <= 1 and 0 <= mlp_sparsity <= 1):
@@ -49,6 +49,7 @@ class StructuralPruner:
         self.config = config
         self.attention_sparsity = attention_sparsity
         self.mlp_sparsity = mlp_sparsity
+        self.apply_head_collapse = apply_head_collapse
         
         # Read model dimensions
         self.num_layers = len(model.model.layers)
@@ -74,6 +75,7 @@ class StructuralPruner:
         self.new_mlp_groups = max(1, int(mlp_groups * (1 - self.mlp_sparsity)))
         self.new_intermediate_size = self.new_mlp_groups * self.mlp_group_size
         
+        logger.info(f"Head collapsing is {'enabled' if apply_head_collapse else 'disabled'}")
         self._log_initialization()
 
     def _validate_mlp_group_size(self, group_size: int) -> int:
@@ -156,11 +158,36 @@ class StructuralPruner:
 
     def _restructure_attention(self, layer: torch.nn.Module, mask: torch.Tensor):
         """Restructure attention layer with new dimensions"""
-        # Calculate output sizes
-        new_qkv_size = self.new_num_heads * self.head_dim
-        new_kv_size = self.new_kv_heads * self.head_dim
-        
         try:
+            # Apply head collapsing if enabled
+            if self.apply_head_collapse:
+                K = self.new_num_heads
+                L = self.num_heads
+                
+                if hasattr(self.model.config, 'num_key_value_heads'):
+                    # GQA: Only collapse query heads
+                    q_weight = layer.self_attn.q_proj.weight
+                    q_3d = q_weight.view(self.num_heads, self.head_dim, self.hidden_size)
+                    for i in range(K - (L - K), K):
+                        mirror_idx = 2*K - i + 1
+                        if mirror_idx < L:
+                            residual = q_3d[i] - q_3d[mirror_idx]
+                            q_3d[i] = q_3d[i] + residual
+                else:
+                    # Standard attention: Collapse all Q,K,V
+                    for proj_name in ['q_proj', 'k_proj', 'v_proj']:
+                        weight = getattr(layer.self_attn, proj_name).weight
+                        weight_3d = weight.view(-1, self.head_dim, self.hidden_size)
+                        for i in range(K - (L - K), K):
+                            mirror_idx = 2*K - i + 1
+                            if mirror_idx < L:
+                                residual = weight_3d[i] - weight_3d[mirror_idx]
+                                weight_3d[i] = weight_3d[i] + residual
+            
+            # Calculate output sizes
+            new_qkv_size = self.new_num_heads * self.head_dim
+            new_kv_size = self.new_kv_heads * self.head_dim
+            
             # Reshape Q projection
             q_weight = layer.self_attn.q_proj.weight
             q_3d = q_weight.view(self.num_heads, self.head_dim, self.hidden_size)
@@ -329,13 +356,7 @@ class StructuralPruner:
             raise
 
     def _verify_saved_model(self, save_path: Path, expected_params: int):
-        """
-        Verify that the saved model can be loaded and has the correct number of parameters.
-        
-        Args:
-            save_path: Path where the model was saved
-            expected_params: Expected number of parameters in the model
-        """
+        """Verify that the saved model can be loaded and has correct parameters"""
         try:
             logger.info("\n=== Verifying Saved Model ===")
             test_load = AutoModelForCausalLM.from_pretrained(
@@ -360,12 +381,7 @@ class StructuralPruner:
             raise
 
     def _verify_model_config(self, loaded_model: torch.nn.Module):
-        """
-        Verify that the loaded model's configuration matches expected dimensions.
-        
-        Args:
-            loaded_model: The loaded model to verify
-        """
+        """Verify that loaded model's configuration matches expected dimensions"""
         try:
             assert loaded_model.config.num_attention_heads == self.new_num_heads, \
                 "Mismatched number of attention heads"
@@ -383,12 +399,7 @@ class StructuralPruner:
             raise
 
     def get_compression_stats(self) -> Dict[str, float]:
-        """
-        Get detailed statistics about the compression achieved.
-        
-        Returns:
-            Dictionary containing various compression metrics
-        """
+        """Get detailed statistics about the compression achieved"""
         return {
             'attention_sparsity': self.attention_sparsity,
             'mlp_sparsity': self.mlp_sparsity,

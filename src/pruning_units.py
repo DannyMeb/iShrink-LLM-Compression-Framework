@@ -97,29 +97,39 @@ class DependencyGraphBuilder:
             raise
         
     def _create_attention_units(self, layer_idx: int) -> List[PruningUnit]:
-        """Create pruning units for GQK attention groups in a layer"""
+        """Create pruning units for attention heads in a layer"""
         layer = self.model.model.layers[layer_idx].self_attn
         head_dim = self.hidden_size // self.num_heads
-        q_heads_per_kv = self.num_heads // self.num_kv_heads
+        
+        # Check if using grouped query attention
+        if hasattr(self.model.config, 'num_key_value_heads'):
+            # Grouped Query Attention case
+            q_heads_per_kv = self.num_heads // self.num_kv_heads
+            num_units = self.num_kv_heads
+        else:
+            # Regular attention case - each head is independent
+            q_heads_per_kv = 1
+            num_units = self.num_heads
         
         units = []
-        for kv_idx in range(self.num_kv_heads):
+        for head_idx in range(num_units):
             # Calculate indices
-            q_start = kv_idx * q_heads_per_kv * head_dim
-            q_end = (kv_idx + 1) * q_heads_per_kv * head_dim
-            kv_start = kv_idx * head_dim
-            kv_end = (kv_idx + 1) * head_dim
+            start = head_idx * head_dim
+            end = (head_idx + 1) * head_dim
             
-            # Create parameter references with slices
+            # For GQA, need wider query slice
+            q_start = head_idx * q_heads_per_kv * head_dim
+            q_end = (head_idx + 1) * q_heads_per_kv * head_dim
+            
             param_references = {
                 'q_proj': (layer.q_proj.weight, slice(q_start, q_end)),
-                'k_proj': (layer.k_proj.weight, slice(kv_start, kv_end)),
-                'v_proj': (layer.v_proj.weight, slice(kv_start, kv_end)),
+                'k_proj': (layer.k_proj.weight, slice(start, end)),
+                'v_proj': (layer.v_proj.weight, slice(start, end)),
                 'o_proj': (layer.o_proj.weight, (slice(None), slice(q_start, q_end)))
             }
             
-            units.append(PruningUnit(layer_idx, kv_idx, param_references))
-            
+            units.append(PruningUnit(layer_idx, head_idx, param_references))
+        
         return units
 
     def _create_mlp_units(self, layer_idx: int) -> List[PruningUnit]:

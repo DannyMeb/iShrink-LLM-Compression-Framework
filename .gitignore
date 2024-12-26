@@ -1,7 +1,8 @@
-/models/**/model.safetensors
+/models/**/**.safetensors
 
-/experiments/results/**/sparsified_models/sparsified_model_at_**/model.safetensors
-/experiments/results/**/pruned_model/model.safetensors
+/experiments/results/**/sparsified_models/sparsified_model_at_**/**.safetensors
+/experiments/results/**/pruned_model/**.safetensors
+/experiments/results/**/pruned_model/**.safetensors
 
 
 /archive
