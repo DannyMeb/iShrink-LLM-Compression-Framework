@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 import torch
+import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -24,10 +25,8 @@ from transformers.trainer_utils import get_last_checkpoint
 logger = logging.getLogger(__name__)
 
 # Fixed paths
-BASE_DIR = Path(__file__).resolve().parent.parent / "experiments/results"
-PRUNED_MODEL_PATH = BASE_DIR / "final_model"
-SPARSIFIED_MODELS_DIR = BASE_DIR / "sparsified_models"
-OUTPUT_DIR = Path("experiments/results/finetuned_models")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
 @dataclass
 class ModelArguments:
@@ -64,6 +63,12 @@ class ModelArguments:
         default=True,
         metadata={"help": "Whether to run evaluation"}
     )
+
+def load_config():
+    """Load configuration file"""
+    logger.info(f"Loading config from: {CONFIG_PATH}")
+    with open(CONFIG_PATH) as f:
+        return yaml.safe_load(f)
 
 def enable_input_require_grads(model):
     """Enable gradient checkpointing with proper hooks"""
@@ -102,15 +107,22 @@ def get_sparsity_level():
 
 def get_model_path():
     """Get model path based on user choice"""
+    # Load config and extract model name
+    config = load_config()
+    model_name = config['model']['name'].split('/')[-1]
+    model_base_dir = PROJECT_ROOT / "experiments" / "results" / model_name
+    
     choice = get_model_choice()
     
     if choice == 1:
-        model_path = PRUNED_MODEL_PATH
-        output_dir = OUTPUT_DIR / "finetuned_pruned_model"
+        # Load from pruned model directory
+        model_path = model_base_dir / 'pruned_model'
+        output_dir = model_base_dir / 'finetuned_models' / 'finetuned_pruned_model'
     else:
+        # Load from sparsified model directory
         sparsity = get_sparsity_level()
-        model_path = SPARSIFIED_MODELS_DIR / f"sparsified_model_at_{sparsity}%"
-        output_dir = OUTPUT_DIR / f"sparsified_model_at_{sparsity}%_finetuned"
+        model_path = model_base_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
+        output_dir = model_base_dir / 'finetuned_models' / f"sparsified_model_at_{sparsity}%_finetuned"
     
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found at {model_path}")
@@ -193,7 +205,7 @@ def setup_model(model_path: Path, args: ModelArguments):
     config = LoraConfig(
         r=8,
         lora_alpha=16,
-        target_modules=[ "gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj"
+        target_modules=["gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj"
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",

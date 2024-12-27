@@ -1,0 +1,34 @@
+{
+  "sparsity_target": 0.2,
+  "actual_sparsity": 0.20000348772321427,
+  "total_parameters": 2818572288,
+  "units_zeroed": {
+    "total": {
+      "count": 30584,
+      "parameters": 563724288,
+      "percentage": 0.20000348772321427
+    },
+    "attention": {
+      "count": 0,
+      "parameters": 0,
+      "percentage": 0.0
+    },
+    "mlp": {
+      "count": 30584,
+      "parameters": 563724288,
+      "percentage": 0.2666713169642857
+    }
+  },
+  "initial_distribution": {
+    "total_units": 114912,
+    "attention": {
+      "units": 224,
+      "parameters": 704643072
+    },
+    "mlp": {
+      "units": 114688,
+      "parameters": 2113929216
+    }
+  },
+  "timestamp": "2024-12-27_13-39-34"
+}
