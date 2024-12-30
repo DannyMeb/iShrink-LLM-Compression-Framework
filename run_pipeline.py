@@ -20,7 +20,7 @@ from src.model_loader import ModelLoader
 from src.zero_out import ProgressiveSparsifier
 from src.pruning_units import DependencyGraphBuilder
 from src.importance_scorer import ImportanceScorer
-from src.adaptive_pruner import StructuralPruner, PruningResult
+from src.pruner.adaptive_pruner import StructuralPruner, PruningResult
 from src.metrics import MetricsTracker
 from src.data import create_mmlu_dataloader
 
@@ -328,25 +328,25 @@ class PruningPipeline:
             stage_times['importance_scoring'] = time.time() - stage_start
             
             # 4 Progressive Sparsification Analysis
-            stage_start = time.time()
-            logger.info("\n" + "="*50)
-            logger.info("Starting Zero-out Sparsification Analysis...")
+            # stage_start = time.time()
+            # logger.info("\n" + "="*50)
+            # logger.info("Starting Zero-out Sparsification Analysis...")
             
-            sparsifier = ProgressiveSparsifier(
-                model=model,
-                tokenizer=tokenizer,
-                save_dir=self.model_base_dir / 'sparsified_models'
-            )
+            # sparsifier = ProgressiveSparsifier(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     save_dir=self.model_base_dir / 'sparsified_models'
+            # )
             
-            try:
-                sparsify_timing = sparsifier.sparsify(pruning_units)
-                stage_times['progressive_sparsification'] = time.time() - stage_start
-                for timing_key, timing_value in sparsify_timing.items():
-                    stage_times[f'sparsify_{timing_key}'] = timing_value
-                logger.info("\nProgressive sparsification completed successfully")
-            except Exception as e:
-                logger.error(f"Error during progressive sparsification: {str(e)}")
-                logger.warning("Continuing with main pruning pipeline...")
+            # try:
+            #     sparsify_timing = sparsifier.sparsify(pruning_units)
+            #     stage_times['progressive_sparsification'] = time.time() - stage_start
+            #     for timing_key, timing_value in sparsify_timing.items():
+            #         stage_times[f'sparsify_{timing_key}'] = timing_value
+            #     logger.info("\nProgressive sparsification completed successfully")
+            # except Exception as e:
+            #     logger.error(f"Error during progressive sparsification: {str(e)}")
+            #     logger.warning("Continuing with main pruning pipeline...")
 
             # 5. Setup Pruner
             stage_start = time.time()
@@ -355,9 +355,9 @@ class PruningPipeline:
             pruner = StructuralPruner(
                 model=model,
                 config=self.config,
-                attention_sparsity=0, 
-                mlp_sparsity=0.35,
-                apply_head_collapse=True 
+                attention_sparsity=0.0, 
+                mlp_sparsity=0.30,
+                apply_head_collapse=False 
             )
             stage_times['setup_pruner'] = time.time() - stage_start
             

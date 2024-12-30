@@ -2,21 +2,20 @@
 
 set -e
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=3
 export WANDB_MODE=disabled
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 # Create output directories
-mkdir -p experiments/results/finetuned_models
 mkdir -p cache
 
 # Training parameters
-LEARNING_RATE=2e-5
-NUM_EPOCHS=2
-BLOCK_SIZE=2048
-BATCH_SIZE=2
-MAX_TRAIN_SAMPLES=12000
-MAX_EVAL_SAMPLES=128
+LEARNING_RATE=1e-5
+NUM_EPOCHS=1
+BLOCK_SIZE=1024
+BATCH_SIZE=4
+MAX_TRAIN_SAMPLES=15000
+MAX_EVAL_SAMPLES=512
 TRAINING_PERCENTAGE=100
 
 echo "Starting training with the following configuration:"
