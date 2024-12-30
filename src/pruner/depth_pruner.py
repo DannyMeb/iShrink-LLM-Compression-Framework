@@ -2,261 +2,193 @@
 
 import torch
 import logging
-from dataclasses import dataclass
-from typing import Dict, List, Any, Tuple, Optional
-import numpy as np
-from copy import deepcopy
+import copy
+from typing import Dict, Any, List
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class DepthPruningResult:
-    """Stores results of depth pruning"""
-    original_layers: int               # Number of layers before pruning
-    pruned_layers: int                # Number of layers after pruning
-    kept_layer_indices: List[int]     # Indices of kept layers
-    layer_importance_scores: Dict[int, float]  # Importance score per layer
-    pruned_model: torch.nn.Module     # The pruned model
-    params_before: int                # Total parameters before pruning
-    params_after: int                 # Total parameters after pruning
-    compression_ratio: float          # Achieved compression ratio
-
 class DepthPruner:
+    """Handles model depth pruning operations"""
+    
     def __init__(
-        self,
+        self, 
         model: torch.nn.Module,
-        depth_sparsity: float,
-        config: Optional[Dict[str, Any]] = None
+        config: Dict[str, Any]
     ):
         """
-        Initialize depth pruner.
+        Initialize depth pruning operations.
         
         Args:
             model: The model to prune
-            depth_sparsity: Fraction of layers to remove (0-1)
-            config: Optional configuration dictionary
+            config: Configuration dictionary
         """
-        if not 0 <= depth_sparsity <= 1:
-            raise ValueError("Depth sparsity must be between 0 and 1")
-            
         self.model = model
-        self.depth_sparsity = depth_sparsity
-        self.config = config or {}
+        self.config = config
         
-        # Get model dimensions
+        # Read model dimensions
         self.num_layers = len(model.model.layers)
-        self.new_num_layers = max(
-            self.config.get('min_layers', 1),
-            int(self.num_layers * (1 - depth_sparsity))
-        )
+        self.hidden_size = model.config.hidden_size
+        self.num_heads = model.config.num_attention_heads
+        self.num_kv_heads = model.config.num_key_value_heads
+        self.head_dim = model.config.head_dim
+        self.intermediate_size = model.config.intermediate_size
         
-        # Get pruning configuration
-        self.layer_group_size = self.config.get('layer_group_size', 1)
-        self.recompute_importance = self.config.get('recompute_importance', True)
-        self.preserve_layers = set(self.config.get('preserve_layers', []))
-        self.importance_method = self.config.get('importance_method', 'combined')
-        self.granularity = self.config.get('granularity', 'block')
+        # Get layer pruning config
+        self.num_layers_to_prune = config.get('pruning', {}).get('num_layers_to_prune', 0)
         
-        self._validate_config()
-        self._log_initialization()
-
-    def _validate_config(self):
-        """Validate pruning configuration"""
-        if self.granularity not in ['block', 'individual']:
-            raise ValueError(f"Invalid granularity: {self.granularity}")
-            
-        if self.importance_method not in ['taylor', 'gradient', 'combined']:
-            raise ValueError(f"Invalid importance method: {self.importance_method}")
-            
-        if any(idx >= self.num_layers for idx in self.preserve_layers):
-            raise ValueError("Invalid layer index in preserve_layers")
-            
-        if self.layer_group_size > 1 and self.granularity != 'block':
-            logger.warning("Layer grouping is only applied when granularity='block'")
-
-    def _log_initialization(self):
-        """Log initialization details"""
-        logger.info("\n=== Depth Pruner Configuration ===")
+        # Calculate new dimensions
+        self.new_num_layers = self.num_layers - self.num_layers_to_prune
+        
+        logger.info(f"Initializing depth pruner:")
         logger.info(f"Original layers: {self.num_layers}")
+        logger.info(f"Layers to prune: {self.num_layers_to_prune}")
         logger.info(f"Target layers: {self.new_num_layers}")
-        logger.info(f"Depth sparsity: {self.depth_sparsity:.2%}")
-        logger.info(f"Granularity: {self.granularity}")
-        logger.info(f"Layer group size: {self.layer_group_size}")
-        logger.info(f"Preserved layers: {sorted(self.preserve_layers)}")
-        logger.info(f"Importance method: {self.importance_method}")
 
-    def calculate_layer_importance(self, pruning_units: List[Any]) -> Dict[int, float]:
-        """Calculate importance score for each layer"""
-        layer_importance = {i: 0.0 for i in range(self.num_layers)}
+    def prune_layers(
+    self,
+    model: torch.nn.Module,
+    layer_importance_scores: List[float]) -> torch.nn.Module:
+        """
+        Create pruned model by removing least important layers.
         
-        # Group units by layer
-        layer_units = {i: [] for i in range(self.num_layers)}
-        for unit in pruning_units:
-            layer_units[unit.layer_idx].append(unit)
+        Args:
+            model: The model to prune.
+            layer_importance_scores: Importance scores for each layer.
         
-        # Calculate layer scores based on method
-        if self.importance_method == 'taylor':
-            for layer_idx, units in layer_units.items():
-                if units:
-                    layer_importance[layer_idx] = np.mean([
-                        unit.taylor_score for unit in units 
-                        if hasattr(unit, 'taylor_score')
-                    ])
-        
-        elif self.importance_method == 'gradient':
-            for layer_idx, units in layer_units.items():
-                if units:
-                    layer_importance[layer_idx] = np.mean([
-                        unit.gradient_norm for unit in units 
-                        if hasattr(unit, 'gradient_norm')
-                    ])
-        
-        else:  # combined
-            for layer_idx, units in layer_units.items():
-                if units:
-                    layer_importance[layer_idx] = np.mean([
-                        unit.importance_score for unit in units
-                    ])
-        
-        # Handle missing scores
-        max_score = max(layer_importance.values())
-        if max_score > 0:
-            layer_importance = {k: v/max_score for k, v in layer_importance.items()}
-        
-        return layer_importance
-
-    def _handle_block_pruning(self, layer_importance: Dict[int, float]) -> List[int]:
-        """Handle pruning when operating on blocks of layers"""
-        if self.layer_group_size > 1:
-            # Average importance scores within blocks
-            block_importance = {}
-            for i in range(0, self.num_layers, self.layer_group_size):
-                block_idx = i // self.layer_group_size
-                block_scores = [
-                    layer_importance[j] 
-                    for j in range(i, min(i + self.layer_group_size, self.num_layers))
-                ]
-                block_importance[block_idx] = np.mean(block_scores)
-            
-            # Select blocks to keep
-            num_blocks = len(block_importance)
-            blocks_to_keep = max(1, int(num_blocks * (1 - self.depth_sparsity)))
-            kept_blocks = sorted(
-                block_importance.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:blocks_to_keep]
-            
-            # Convert back to layer indices
-            kept_layers = []
-            for block_idx, _ in kept_blocks:
-                start_idx = block_idx * self.layer_group_size
-                end_idx = min((block_idx + 1) * self.layer_group_size, self.num_layers)
-                kept_layers.extend(range(start_idx, end_idx))
-            
-        else:
-            # Sort layers by importance
-            layer_scores = sorted(
-                layer_importance.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )
-            kept_layers = [idx for idx, _ in layer_scores[:self.new_num_layers]]
-        
-        return sorted(kept_layers)
-
-    def _handle_individual_pruning(self, layer_importance: Dict[int, float]) -> List[int]:
-        """Handle pruning when operating on individual layers"""
-        # Add preserved layers
-        kept_layers = list(self.preserve_layers)
-        remaining_slots = self.new_num_layers - len(kept_layers)
-        
-        if remaining_slots > 0:
-            # Sort remaining layers by importance
-            remaining_layers = [
-                (idx, score) for idx, score in layer_importance.items()
-                if idx not in self.preserve_layers
-            ]
-            remaining_layers.sort(key=lambda x: x[1], reverse=True)
-            
-            # Add top remaining layers
-            kept_layers.extend(idx for idx, _ in remaining_layers[:remaining_slots])
-        
-        return sorted(kept_layers)
-
-    def select_layers_to_keep(self, layer_importance: Dict[int, float]) -> List[int]:
-        """Select which layers to keep based on importance scores"""
-        if self.granularity == 'block':
-            kept_layers = self._handle_block_pruning(layer_importance)
-        else:
-            kept_layers = self._handle_individual_pruning(layer_importance)
-        
-        # Ensure minimum layers are kept
-        if len(kept_layers) < self.config.get('min_layers', 1):
-            logger.warning(f"Too few layers selected ({len(kept_layers)}), "
-                         f"adding more to meet minimum requirement")
-            missing_layers = set(range(self.num_layers)) - set(kept_layers)
-            additional_needed = self.config.get('min_layers', 1) - len(kept_layers)
-            kept_layers.extend(sorted(list(missing_layers))[:additional_needed])
-            kept_layers.sort()
-        
-        return kept_layers
-
-    def prune_layers(self, pruning_units: List[Any]) -> DepthPruningResult:
-        """Execute depth pruning"""
+        Returns:
+            Pruned model with fewer layers.
+        """
         try:
-            params_before = sum(p.numel() for p in self.model.parameters())
-            logger.info(f"Initial parameter count: {params_before:,}")
+            # Create new config with fewer layers
+            config = copy.deepcopy(model.config)
+            config.num_hidden_layers = self.new_num_layers
             
-            # Calculate layer importance and select layers to keep
-            layer_importance = self.calculate_layer_importance(pruning_units)
-            kept_layer_indices = self.select_layers_to_keep(layer_importance)
+            # Initialize new model with fewer layers
+            pruned_model = type(model)(config)
             
-            # Create pruned model
-            pruned_model = deepcopy(self.model)
+            # Get indices of layers to remove
+            layer_indices = list(range(self.num_layers))
+            layer_scores = list(zip(layer_indices, layer_importance_scores))
+            sorted_layers = sorted(layer_scores, key=lambda x: x[1], reverse=True)
             
-            # Create new layers list with only kept layers
-            new_layers = torch.nn.ModuleList([
-                pruned_model.model.layers[i] for i in kept_layer_indices
-            ])
+            # Keep the most important layers
+            keep_indices = sorted([idx for idx, _ in sorted_layers[:self.new_num_layers]])
+            self.pruned_indices = sorted([idx for idx, _ in sorted_layers[self.new_num_layers:]])
             
-            # Update model
-            pruned_model.model.layers = new_layers
-            pruned_model.config.num_hidden_layers = len(kept_layer_indices)
+            logger.info(f"Keeping layers: {keep_indices}")
+            logger.info(f"Pruning layers: {self.pruned_indices}")
             
-            # Calculate compression
-            params_after = sum(p.numel() for p in pruned_model.parameters())
-            compression_ratio = (params_before - params_after) / params_before
+            # Copy weights for unpruned components
+            pruned_model = self._copy_unpruned_weights(model, pruned_model, keep_indices)
             
-            # Log results
-            logger.info(f"\nKept layers: {kept_layer_indices}")
-            logger.info(f"Parameters before: {params_before:,}")
-            logger.info(f"Parameters after: {params_after:,}")
-            logger.info(f"Compression ratio: {compression_ratio:.2%}")
-            
-            return DepthPruningResult(
-                original_layers=self.num_layers,
-                pruned_layers=len(kept_layer_indices),
-                kept_layer_indices=kept_layer_indices,
-                layer_importance_scores=layer_importance,
-                pruned_model=pruned_model,
-                params_before=params_before,
-                params_after=params_after,
-                compression_ratio=compression_ratio
-            )
-            
+            return pruned_model
+        
         except Exception as e:
-            logger.error(f"Error during depth pruning: {str(e)}")
+            logger.error(f"Error in layer pruning: {str(e)}")
             raise
 
-    def verify_pruned_layers(self, pruned_model: torch.nn.Module, expected_layers: int):
-        """Verify pruned model has correct number of layers"""
-        actual_layers = len(pruned_model.model.layers)
-        config_layers = pruned_model.config.num_hidden_layers
+
+    def _copy_unpruned_weights(
+        self,
+        source_model: torch.nn.Module,
+        target_model: torch.nn.Module,
+        keep_indices: List[int],
+    ) -> torch.nn.Module:
+        """
+        Copy weights from original model to pruned model, mapping layers appropriately.
         
-        assert actual_layers == expected_layers, \
-            f"Expected {expected_layers} layers, got {actual_layers}"
-        assert config_layers == expected_layers, \
-            f"Config shows {config_layers} layers, expected {expected_layers}"
+        Args:
+            source_model: Original model
+            target_model: Pruned model with fewer layers
+            keep_indices: Indices of layers to keep
             
-        logger.info("Layer verification successful")
+        Returns:
+            Model with copied weights
+        """
+        try:
+            # Copy embeddings
+            target_model.model.embed_tokens.weight.data.copy_(
+                source_model.model.embed_tokens.weight.data
+            )
+            
+            # Copy final layer norm
+            target_model.model.norm.weight.data.copy_(
+                source_model.model.norm.weight.data
+            )
+            
+            # Copy language model head
+            target_model.lm_head.weight.data.copy_(
+                source_model.lm_head.weight.data
+            )
+            
+            # Copy kept transformer layers
+            for new_idx, old_idx in enumerate(keep_indices):
+                logger.info(f"Copying layer {old_idx} to position {new_idx}")
+                
+                # Get source and target layers
+                source_layer = source_model.model.layers[old_idx]
+                target_layer = target_model.model.layers[new_idx]
+                
+                # Copy attention weights
+                self._copy_attention_weights(source_layer, target_layer)
+                
+                # Copy MLP weights
+                self._copy_mlp_weights(source_layer, target_layer)
+                
+                # Copy layer norm weights
+                target_layer.input_layernorm.weight.data.copy_(
+                    source_layer.input_layernorm.weight.data
+                )
+                target_layer.post_attention_layernorm.weight.data.copy_(
+                    source_layer.post_attention_layernorm.weight.data
+                )
+            
+            return target_model
+            
+        except Exception as e:
+            logger.error(f"Error copying weights: {str(e)}")
+            raise
+
+    def _copy_attention_weights(
+        self,
+        source_layer: torch.nn.Module,
+        target_layer: torch.nn.Module
+    ):
+        """Copy attention weights between layers"""
+        # Copy Q, K, V projections
+        target_layer.self_attn.q_proj.weight.data.copy_(
+            source_layer.self_attn.q_proj.weight.data
+        )
+        target_layer.self_attn.k_proj.weight.data.copy_(
+            source_layer.self_attn.k_proj.weight.data
+        )
+        target_layer.self_attn.v_proj.weight.data.copy_(
+            source_layer.self_attn.v_proj.weight.data
+        )
+        
+        # Copy output projection
+        target_layer.self_attn.o_proj.weight.data.copy_(
+            source_layer.self_attn.o_proj.weight.data
+        )
+
+    def _copy_mlp_weights(
+        self,
+        source_layer: torch.nn.Module,
+        target_layer: torch.nn.Module
+    ):
+        """Copy MLP weights between layers"""
+        # Copy gate projection
+        target_layer.mlp.gate_proj.weight.data.copy_(
+            source_layer.mlp.gate_proj.weight.data
+        )
+        
+        # Copy up projection
+        target_layer.mlp.up_proj.weight.data.copy_(
+            source_layer.mlp.up_proj.weight.data
+        )
+        
+        # Copy down projection
+        target_layer.mlp.down_proj.weight.data.copy_(
+            source_layer.mlp.down_proj.weight.data
+        )

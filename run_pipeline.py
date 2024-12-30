@@ -95,6 +95,25 @@ class PruningPipeline:
         for section in required_sections:
             if section not in config:
                 raise ValueError(f"Missing required config section: {section}")
+        
+        # Validate pruning configuration
+        pruning_config = config.get('pruning', {})
+        
+        if not pruning_config.get('width_pruning', {}).get('enabled', False) and \
+        not pruning_config.get('depth_pruning', {}).get('enabled', False):
+            raise ValueError("At least one pruning method (width or depth) must be enabled")
+
+        # Validate width pruning config if enabled
+        if pruning_config.get('width_pruning', {}).get('enabled', False):
+            width_config = pruning_config.get('width_pruning', {})
+            if 'attention_sparsity' not in width_config or 'mlp_sparsity' not in width_config:
+                raise ValueError("Width pruning enabled but missing sparsity configuration")
+
+        # Validate depth pruning config if enabled
+        if pruning_config.get('depth_pruning', {}).get('enabled', False):
+            depth_config = pruning_config.get('depth_pruning', {})
+            if 'num_layers_to_prune' not in depth_config:
+                raise ValueError("Depth pruning enabled but missing num_layers_to_prune")
     
     def _setup_model_and_data(self) -> Tuple[torch.nn.Module, Any, torch.utils.data.DataLoader]:
         """Setup model and data loaders"""
@@ -353,12 +372,9 @@ class PruningPipeline:
             logger.info("\n" + "="*50)
             logger.info("Setting up progressive pruner...")
             pruner = StructuralPruner(
-                model=model,
-                config=self.config,
-                attention_sparsity=0.0, 
-                mlp_sparsity=0.30,
-                apply_head_collapse=False 
-            )
+                    model=model,
+                    config=self.config
+                )
             stage_times['setup_pruner'] = time.time() - stage_start
             
             # 6. Run Pruning

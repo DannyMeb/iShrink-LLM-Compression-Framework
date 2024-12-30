@@ -140,7 +140,7 @@ def process_dataset(tokenizer, args):
             'en',
             streaming=True,
             cache_dir='cache'
-        )
+        ).shuffle(seed=42)
 
         def tokenize_function(examples):
             return tokenizer(
@@ -157,7 +157,7 @@ def process_dataset(tokenizer, args):
         max_train = args.max_train_samples or 1000
 
         for i in range(0, max_train, chunk_size):
-            chunk = list(dataset["train"].take(min(chunk_size, max_train - i)))
+            chunk = list(dataset["train"].shuffle(seed=42).take(min(chunk_size, max_train - i)))
             chunk_processed = [tokenize_function(example) for example in chunk]
             
             for example in chunk_processed:
@@ -203,9 +203,9 @@ def setup_model(model_path: Path, args: ModelArguments):
     
     logger.info("Configuring LoRA...")
     config = LoraConfig(
-        r=8,
+        r=16,
         lora_alpha=16,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj","gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj"
+        target_modules=["gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj", q_proj", "v_proj", "k_proj", "o_proj",
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
@@ -234,7 +234,7 @@ def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArgum
         logging_steps=10,
         save_steps=50,
         eval_steps=50,
-        evaluation_strategy="steps" if args.do_eval else "no",
+        eval_strategy="steps" if args.do_eval else "no",
         save_strategy="steps",
         save_total_limit=10,
         load_best_model_at_end=args.do_eval,

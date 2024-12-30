@@ -1,13 +1,16 @@
+#adaptive_pruner.py
+
 import torch
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 import numpy as np
 from copy import deepcopy
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from pathlib import Path
 
 from .width_pruner import WidthPruner
+from .depth_pruner import DepthPruner
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ class PruningResult:
     params_after: int                  # Total parameters after pruning
     actual_compression: float          # Achieved compression ratio
     pruned_model: torch.nn.Module
+    pruned_layers: Optional[List[int]] = None 
 
 class StructuralPruner:
     def __init__(
@@ -46,6 +50,9 @@ class StructuralPruner:
         # Initialize width pruner for dimension handling
         self.width_pruner = WidthPruner(model, config)
         
+        # Initialize DepthPruner
+        self.depth_pruner = DepthPruner(model, config)
+
         # Get model dimensions from width pruner
         self.num_layers = self.width_pruner.num_layers
         self.hidden_size = self.width_pruner.hidden_size
@@ -131,35 +138,65 @@ class StructuralPruner:
         return attention_masks, mlp_masks
 
     def optimize_pruning(self, pruning_units: List[Any]) -> PruningResult:
-        """Execute structural pruning"""
+        """Execute structural pruning based on configuration."""
         try:
             params_before = sum(p.numel() for p in self.model.parameters())
             logger.info(f"Initial parameter count: {params_before:,}")
-            
+
             pruned_model = deepcopy(self.model)
-            attention_masks, mlp_masks = self._select_units_to_keep(pruning_units)
-            
-            for layer_idx in range(self.num_layers):
-                layer = pruned_model.model.layers[layer_idx]
-                
-                # Use width pruner to restructure the layer
-                self.width_pruner.restructure_layer(
-                    layer=layer,
-                    attention_mask=attention_masks[layer_idx],
-                    mlp_mask=mlp_masks[layer_idx],
-                    apply_head_collapse=self.apply_head_collapse
-                )
-            
+            pruned_indices = []
+
+            # Perform depth pruning first if enabled
+            if self.config['pruning']['depth_pruning']['enabled']:
+                logger.info("\n=== Depth Pruning ===")
+                num_layers_to_prune = self.config['pruning']['depth_pruning']['num_layers_to_prune']
+                keep_first_layers = self.config['pruning']['depth_pruning']['keep_first_layers']
+                keep_last_layers = self.config['pruning']['depth_pruning']['keep_last_layers']
+
+                # Calculate layer importance scores
+                layer_importance_scores = [
+                    sum(unit.importance_score for unit in pruning_units if unit.layer_idx == i)
+                    for i in range(self.num_layers)
+                ]
+
+                # Adjust importance scores to prioritize keeping first/last layers
+                for i in range(self.num_layers):
+                    if i < keep_first_layers or i >= self.num_layers - keep_last_layers:
+                        layer_importance_scores[i] = float('inf')  # High score to ensure retention
+
+                # Perform depth pruning
+                pruned_model = self.depth_pruner.prune_layers(pruned_model, layer_importance_scores)
+                pruned_indices = self.depth_pruner.pruned_indices  # Save indices of pruned layers
+
+            # Perform width pruning if enabled
+            if self.config['pruning']['width_pruning']['enabled']:
+                logger.info("\n=== Width Pruning ===")
+                attention_masks, mlp_masks = self._select_units_to_keep(pruning_units)
+
+                # Apply pruning masks to each remaining layer
+                for layer_idx in range(self.depth_pruner.new_num_layers if pruned_indices else self.num_layers):
+                    if layer_idx in pruned_indices:
+                        continue  # Skip pruned layers
+
+                    layer = pruned_model.model.layers[layer_idx]
+                    self.width_pruner.restructure_layer(
+                        layer=layer,
+                        attention_mask=attention_masks[layer_idx],
+                        mlp_mask=mlp_masks[layer_idx],
+                        apply_head_collapse=self.config['pruning']['width_pruning']['apply_head_collapse']
+                    )
+
+            # Calculate final parameter count and compression ratio
             params_after = sum(p.numel() for p in pruned_model.parameters())
             actual_compression = (params_before - params_after) / params_before
-            
+
             logger.info("\n=== Size Verification ===")
             logger.info(f"Parameters before: {params_before:,}")
             logger.info(f"Parameters after: {params_after:,}")
             logger.info(f"Actual compression: {actual_compression:.2%}")
-            
+
             assert params_after < params_before, "Model size not reduced!"
-            
+
             return PruningResult(
                 original_size={
                     'num_heads': self.num_heads,
@@ -168,23 +205,26 @@ class StructuralPruner:
                     'hidden_size': self.hidden_size
                 },
                 pruned_size={
-                    'num_heads': self.new_num_heads,
-                    'num_kv_heads': self.new_kv_heads,
-                    'intermediate_size': self.new_intermediate_size,
+                    'num_heads': self.width_pruner.new_num_heads,
+                    'num_kv_heads': self.width_pruner.new_kv_heads,
+                    'intermediate_size': self.width_pruner.new_intermediate_size,
                     'hidden_size': self.hidden_size
                 },
-                attention_mask=attention_masks,
-                mlp_mask=mlp_masks,
-                compression_ratio=1 - max(self.attention_sparsity, self.mlp_sparsity),
+                attention_mask=attention_masks if self.config['pruning']['width_pruning']['enabled'] else None,
+                mlp_mask=mlp_masks if self.config['pruning']['width_pruning']['enabled'] else None,
+                compression_ratio=1 - max(self.config['pruning']['width_pruning']['attention_sparsity'],
+                                        self.config['pruning']['width_pruning']['mlp_sparsity']),
                 params_before=params_before,
                 params_after=params_after,
                 actual_compression=actual_compression,
-                pruned_model=pruned_model
+                pruned_model=pruned_model,
+                pruned_layers=pruned_indices
             )
-            
         except Exception as e:
             logger.error(f"Error during pruning optimization: {str(e)}")
             raise
+
+
 
     def save_model(self, pruning_result: PruningResult, tokenizer: AutoTokenizer, save_path: Path):
         """Save pruned model and verify it"""

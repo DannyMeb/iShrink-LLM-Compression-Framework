@@ -2,7 +2,7 @@
 
 set -e
 
-export CUDA_VISIBLE_DEVICES=3
+# export CUDA_VISIBLE_DEVICES=3
 export WANDB_MODE=disabled
 export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
@@ -10,12 +10,12 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 mkdir -p cache
 
 # Training parameters
-LEARNING_RATE=1e-5
+LEARNING_RATE=2e-5
 NUM_EPOCHS=1
-BLOCK_SIZE=1024
-BATCH_SIZE=4
-MAX_TRAIN_SAMPLES=15000
-MAX_EVAL_SAMPLES=512
+BLOCK_SIZE=2048
+BATCH_SIZE=2
+MAX_TRAIN_SAMPLES=10000
+MAX_EVAL_SAMPLES=256
 TRAINING_PERCENTAGE=100
 
 echo "Starting training with the following configuration:"

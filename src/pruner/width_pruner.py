@@ -1,3 +1,5 @@
+#width_pruner.py
+
 import torch
 import logging
 from typing import Dict, Any, Optional
@@ -39,9 +41,14 @@ class WidthPruner:
         # Calculate GQA ratio
         self.q_per_kv = self.num_heads // self.num_kv_heads
 
-        # Get sparsity values
-        self.attention_sparsity = config.get('pruning', {}).get('attention_sparsity', 0.25)
-        self.mlp_sparsity = config.get('pruning', {}).get('mlp_sparsity', 0.25)
+        # Get sparsity values from config with the correct path
+        width_config = config.get('pruning', {}).get('width_pruning', {})
+        self.attention_sparsity = width_config.get('attention_sparsity', 0.0)
+        self.mlp_sparsity = width_config.get('mlp_sparsity', 0.0)
+        
+        logger.info(f"Initializing WidthPruner with sparsity values:")
+        logger.info(f"  attention_sparsity: {self.attention_sparsity}")
+        logger.info(f"  mlp_sparsity: {self.mlp_sparsity}")
 
         # Calculate new dimensions
         self.new_kv_heads = max(1, int(self.num_kv_heads * (1 - self.attention_sparsity)))
