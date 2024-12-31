@@ -265,44 +265,33 @@ class PruningPipeline:
                     'parameters_before': pruning_result.params_before,
                     'parameters_after': pruning_result.params_after,
                     'actual_compression': pruning_result.actual_compression
-                },
-                'pruning_masks': {
-                    'attention_masks': {
-                        layer_idx: mask.tolist() 
-                        for layer_idx, mask in pruning_result.attention_mask.items()
-                    },
-                    'mlp_masks': {
-                        layer_idx: mask.tolist() 
-                        for layer_idx, mask in pruning_result.mlp_mask.items()
-                    }
                 }
             }
 
-            # Log compression results
-            logger.info("\n=== Pruning Results ===")
-            logger.info(f"Original Parameters: {pruning_result.params_before:,}")
-            logger.info(f"Pruned Parameters: {pruning_result.params_after:,}")
-            logger.info(f"Compression Ratio: {pruning_result.compression_ratio:.2%}")
-            logger.info(f"Actual Compression: {pruning_result.actual_compression:.2%}")
-            
-            # Save dimensions changes
-            logger.info("\n=== Model Dimensions ===")
-            logger.info(f"Original Attention Heads: {pruning_result.original_size['num_heads']}")
-            logger.info(f"Pruned Attention Heads: {pruning_result.pruned_size['num_heads']}")
-            logger.info(f"Original KV Heads: {pruning_result.original_size['num_kv_heads']}")
-            logger.info(f"Pruned KV Heads: {pruning_result.pruned_size['num_kv_heads']}")
-            logger.info(f"Original Intermediate Size: {pruning_result.original_size['intermediate_size']}")
-            logger.info(f"Pruned Intermediate Size: {pruning_result.pruned_size['intermediate_size']}")
+            # Only include masks if width pruning was performed
+            if pruning_result.attention_mask is not None and pruning_result.mlp_mask is not None:
+                summary['pruning_masks'] = {
+                    'attention_masks': {
+                        str(layer_idx): mask.tolist() 
+                        for layer_idx, mask in pruning_result.attention_mask.items()
+                    },
+                    'mlp_masks': {
+                        str(layer_idx): mask.tolist() 
+                        for layer_idx, mask in pruning_result.mlp_mask.items()
+                    }
+                }
 
             # Save summary to a JSON file
             summary_path = save_path / 'pruning_summary.json'
             with open(summary_path, 'w') as f:
                 json.dump(summary, f, indent=2)
 
-            logger.info(f"\nResults saved to {summary_path}")
-            
-            if self.config['training']['logging']['use_wandb']:
-                wandb.log(summary)
+            logger.info("\n=== Pruning Results ===")
+            logger.info(f"Original Parameters: {pruning_result.params_before:,}")
+            logger.info(f"Pruned Parameters: {pruning_result.params_after:,}")
+            logger.info(f"Compression Ratio: {pruning_result.compression_ratio:.2%}")
+            logger.info(f"Actual Compression: {pruning_result.actual_compression:.2%}")
+            logger.info(f"Results saved to {summary_path}")
 
         except Exception as e:
             logger.error(f"Error saving pruning results: {str(e)}")

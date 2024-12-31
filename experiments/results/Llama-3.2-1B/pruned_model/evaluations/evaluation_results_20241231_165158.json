@@ -1,0 +1,84 @@
+{
+  "timestamp": "2024-12-31T16:51:58.396852",
+  "model_type": "pruned",
+  "model_path": "/home/daniel.gebre/Thesis/LLM-Compression/experiments/results/Llama-3.2-1B/pruned_model",
+  "adapter_path": null,
+  "model_config": {
+    "_name_or_path": "models/Llama-3.2-1B",
+    "architectures": [
+      "LlamaForCausalLM"
+    ],
+    "attention_bias": false,
+    "attention_dropout": 0.0,
+    "bos_token_id": 128000,
+    "eos_token_id": 128001,
+    "head_dim": 64,
+    "hidden_act": "silu",
+    "hidden_size": 2048,
+    "initializer_range": 0.02,
+    "intermediate_size": 6144,
+    "max_position_embeddings": 131072,
+    "mlp_bias": false,
+    "model_type": "llama",
+    "num_attention_heads": 32,
+    "num_hidden_layers": 15,
+    "num_key_value_heads": 8,
+    "pretraining_tp": 1,
+    "rms_norm_eps": 1e-05,
+    "rope_scaling": {
+      "factor": 32.0,
+      "high_freq_factor": 4.0,
+      "low_freq_factor": 1.0,
+      "original_max_position_embeddings": 8192,
+      "rope_type": "llama3"
+    },
+    "rope_theta": 500000.0,
+    "tie_word_embeddings": true,
+    "torch_dtype": "float16",
+    "transformers_version": "4.47.1",
+    "use_cache": true,
+    "vocab_size": 128256
+  },
+  "sparsification_stats": null,
+  "metrics": {
+    "accuracy": 0.2549772468714448,
+    "latency_ms": 14.29910957813263,
+    "throughput": 69.93442455530811,
+    "parameter_count": 986185728,
+    "active_parameters": 986184364,
+    "sparsity": 1.3831066109082357e-06,
+    "compute": {
+      "flops": 378682188800,
+      "macs": 189341094400,
+      "memory_footprint": {
+        "gpu_allocated": 1890.25390625,
+        "gpu_cached": 4322.0,
+        "cpu_memory": 1595.515625
+      },
+      "activation_memory_mb": 2033.26171875
+    },
+    "compute_metrics": {
+      "flops": 378682188800,
+      "macs": 189341094400,
+      "parameter_count": 986185728,
+      "active_parameter_count": 986184364,
+      "sparsity": 1.3831066109082357e-06,
+      "bandwidth_usage": 0.0,
+      "cache_hits": 1.0,
+      "activation_memory": 2033.26171875,
+      "attention_params": 157286400,
+      "attention_nonzero": 157286153,
+      "attention_sparsity": 1.5703837076275207e-06,
+      "mlp_params": 566231040,
+      "mlp_nonzero": 566230216,
+      "mlp_sparsity": 1.4552363643005606e-06,
+      "embedding_params": 262668288
+    },
+    "cost_metrics": {
+      "inference_cost_usd": 49.30922091919458,
+      "gpu_time_cost": 1.9859874414073095e-06,
+      "memory_cost": 7.332071325944551e-07,
+      "total_operation_cost": 49.309218200000004
+    }
+  }
+}

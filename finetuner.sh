@@ -10,13 +10,13 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 mkdir -p cache
 
 # Training parameters
-LEARNING_RATE=2e-5
-NUM_EPOCHS=1
+LEARNING_RATE=1e-4
+NUM_EPOCHS=5
 BLOCK_SIZE=2048
 BATCH_SIZE=2
-MAX_TRAIN_SAMPLES=10000
+MAX_TRAIN_SAMPLES=20000
 MAX_EVAL_SAMPLES=256
-TRAINING_PERCENTAGE=100
+TRAINING_PERCENTAGE=75
 
 echo "Starting training with the following configuration:"
 echo "Learning Rate: $LEARNING_RATE"

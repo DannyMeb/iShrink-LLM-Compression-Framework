@@ -12,7 +12,6 @@ model:
   gradient_checkpointing: true
   hidden_size: 768
   num_heads: 12
-  mlp_ratio: 4
   tokenizer_kwargs:
     padding: true
     truncation: true
@@ -30,11 +29,11 @@ pruning:
     enabled: true
     attention_sparsity: 0.0
     mlp_sparsity: 0.25
-    max_pruned_heads: 100
+    # max_pruned_heads: 100
     apply_head_collapse: false
 
   depth_pruning:
-    enabled: false
+    enabled: true
     num_layers_to_prune: 1
     keep_first_layers: 4  # Keep first N layers
     keep_last_layers: 2   # Keep last N layers

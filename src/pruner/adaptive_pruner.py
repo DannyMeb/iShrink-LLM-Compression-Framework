@@ -145,39 +145,53 @@ class StructuralPruner:
 
             pruned_model = deepcopy(self.model)
             pruned_indices = []
+            current_num_layers = self.num_layers
 
             # Perform depth pruning first if enabled
             if self.config['pruning']['depth_pruning']['enabled']:
-                logger.info("\n=== Depth Pruning ===")
                 num_layers_to_prune = self.config['pruning']['depth_pruning']['num_layers_to_prune']
-                keep_first_layers = self.config['pruning']['depth_pruning']['keep_first_layers']
-                keep_last_layers = self.config['pruning']['depth_pruning']['keep_last_layers']
+                if num_layers_to_prune > 0:
+                    logger.info("\n=== Depth Pruning ===")
+                    keep_first_layers = self.config['pruning']['depth_pruning']['keep_first_layers']
+                    keep_last_layers = self.config['pruning']['depth_pruning']['keep_last_layers']
 
-                # Calculate layer importance scores
-                layer_importance_scores = [
-                    sum(unit.importance_score for unit in pruning_units if unit.layer_idx == i)
-                    for i in range(self.num_layers)
-                ]
+                    # Calculate layer importance scores
+                    layer_importance_scores = [
+                        sum(unit.importance_score for unit in pruning_units if unit.layer_idx == i)
+                        for i in range(self.num_layers)
+                    ]
 
-                # Adjust importance scores to prioritize keeping first/last layers
-                for i in range(self.num_layers):
-                    if i < keep_first_layers or i >= self.num_layers - keep_last_layers:
-                        layer_importance_scores[i] = float('inf')  # High score to ensure retention
+                    # Adjust importance scores to prioritize keeping first/last layers
+                    for i in range(self.num_layers):
+                        if i < keep_first_layers or i >= self.num_layers - keep_last_layers:
+                            layer_importance_scores[i] = float('inf')
 
-                # Perform depth pruning
-                pruned_model = self.depth_pruner.prune_layers(pruned_model, layer_importance_scores)
-                pruned_indices = self.depth_pruner.pruned_indices  # Save indices of pruned layers
+                    # Perform depth pruning
+                    pruned_model = self.depth_pruner.prune_layers(pruned_model, layer_importance_scores)
+                    pruned_indices = self.depth_pruner.pruned_indices
+                    current_num_layers = len(pruned_model.model.layers)
+
+                    # Update pruning units to only include remaining layers
+                    pruning_units = [unit for unit in pruning_units if unit.layer_idx not in pruned_indices]
+                    
+                    # Update layer indices to match new structure
+                    layer_map = {old_idx: new_idx for new_idx, old_idx in 
+                            enumerate(sorted(set(range(self.num_layers)) - set(pruned_indices)))}
+                    for unit in pruning_units:
+                        unit.layer_idx = layer_map[unit.layer_idx]
+                else:
+                    logger.info("Depth pruning enabled but num_layers_to_prune=0, skipping...")
 
             # Perform width pruning if enabled
+            attention_masks = None
+            mlp_masks = None
             if self.config['pruning']['width_pruning']['enabled']:
                 logger.info("\n=== Width Pruning ===")
+                # Get masks only for remaining layers
                 attention_masks, mlp_masks = self._select_units_to_keep(pruning_units)
 
-                # Apply pruning masks to each remaining layer
-                for layer_idx in range(self.depth_pruner.new_num_layers if pruned_indices else self.num_layers):
-                    if layer_idx in pruned_indices:
-                        continue  # Skip pruned layers
-
+                # Apply width pruning to remaining layers
+                for layer_idx in range(current_num_layers):
                     layer = pruned_model.model.layers[layer_idx]
                     self.width_pruner.restructure_layer(
                         layer=layer,
@@ -186,7 +200,7 @@ class StructuralPruner:
                         apply_head_collapse=self.config['pruning']['width_pruning']['apply_head_collapse']
                     )
 
-            # Calculate final parameter count and compression ratio
+            # Calculate final metrics
             params_after = sum(p.numel() for p in pruned_model.parameters())
             actual_compression = (params_before - params_after) / params_before
 
@@ -197,6 +211,11 @@ class StructuralPruner:
 
             assert params_after < params_before, "Model size not reduced!"
 
+            # Get final dimensions
+            final_num_heads = self.width_pruner.new_num_heads if self.config['pruning']['width_pruning']['enabled'] else self.num_heads
+            final_num_kv_heads = self.width_pruner.new_kv_heads if self.config['pruning']['width_pruning']['enabled'] else self.num_kv_heads
+            final_intermediate_size = self.width_pruner.new_intermediate_size if self.config['pruning']['width_pruning']['enabled'] else self.intermediate_size
+
             return PruningResult(
                 original_size={
                     'num_heads': self.num_heads,
@@ -205,21 +224,22 @@ class StructuralPruner:
                     'hidden_size': self.hidden_size
                 },
                 pruned_size={
-                    'num_heads': self.width_pruner.new_num_heads,
-                    'num_kv_heads': self.width_pruner.new_kv_heads,
-                    'intermediate_size': self.width_pruner.new_intermediate_size,
+                    'num_heads': final_num_heads,
+                    'num_kv_heads': final_num_kv_heads,
+                    'intermediate_size': final_intermediate_size,
                     'hidden_size': self.hidden_size
                 },
                 attention_mask=attention_masks if self.config['pruning']['width_pruning']['enabled'] else None,
                 mlp_mask=mlp_masks if self.config['pruning']['width_pruning']['enabled'] else None,
-                compression_ratio=1 - max(self.config['pruning']['width_pruning']['attention_sparsity'],
-                                        self.config['pruning']['width_pruning']['mlp_sparsity']),
+                compression_ratio=1 - max(self.config['pruning']['width_pruning'].get('attention_sparsity', 0),
+                                        self.config['pruning']['width_pruning'].get('mlp_sparsity', 0)),
                 params_before=params_before,
                 params_after=params_after,
                 actual_compression=actual_compression,
                 pruned_model=pruned_model,
                 pruned_layers=pruned_indices
             )
+
         except Exception as e:
             logger.error(f"Error during pruning optimization: {str(e)}")
             raise
@@ -232,13 +252,27 @@ class StructuralPruner:
             save_path.mkdir(parents=True, exist_ok=True)
             model = pruning_result.pruned_model
             
-            # Update model config with new dimensions
+            # Get actual dimensions from model
+            sample_layer = model.model.layers[0]
+            actual_hidden_size = sample_layer.self_attn.q_proj.weight.shape[1]
+            actual_intermediate_size = sample_layer.mlp.gate_proj.weight.shape[0]
+            
+            # Update all dimension-related config attributes
+            model.config.hidden_size = actual_hidden_size
+            model.config.intermediate_size = actual_intermediate_size
             model.config.num_attention_heads = pruning_result.pruned_size['num_heads']
             model.config.num_key_value_heads = pruning_result.pruned_size['num_kv_heads']
-            model.config.intermediate_size = pruning_result.pruned_size['intermediate_size']
+            model.config.num_hidden_layers = len(model.model.layers)
             
-            # Save artifacts
-            logger.info(f"Saving pruned model to {save_path}")
+            # Log configuration before saving
+            logger.info(f"Saving model with configuration:")
+            logger.info(f"  hidden_size: {actual_hidden_size}")
+            logger.info(f"  intermediate_size: {actual_intermediate_size}")
+            logger.info(f"  num_attention_heads: {model.config.num_attention_heads}")
+            logger.info(f"  num_key_value_heads: {model.config.num_key_value_heads}")
+            logger.info(f"  num_hidden_layers: {model.config.num_hidden_layers}")
+            
+            # Save model and tokenizer
             model.config.save_pretrained(save_path)
             tokenizer.save_pretrained(save_path)
             model.save_pretrained(save_path, safe_serialization=True)
@@ -248,7 +282,7 @@ class StructuralPruner:
             
         except Exception as e:
             logger.error(f"Error saving model: {str(e)}")
-            raise
+            raise e 
 
     def _verify_saved_model(self, save_path: Path, expected_params: int):
         """Verify the saved model"""
@@ -278,21 +312,25 @@ class StructuralPruner:
     def _verify_model_config(self, loaded_model: torch.nn.Module):
         """Verify model configuration"""
         try:
+            sample_layer = loaded_model.model.layers[0]
+            actual_hidden_size = sample_layer.self_attn.q_proj.weight.shape[1]
+            actual_intermediate_size = sample_layer.mlp.gate_proj.weight.shape[0]
+
+            assert loaded_model.config.hidden_size == actual_hidden_size, \
+                f"Mismatched hidden size: config={loaded_model.config.hidden_size}, actual={actual_hidden_size}"
+            assert loaded_model.config.intermediate_size == actual_intermediate_size, \
+                f"Mismatched intermediate size: config={loaded_model.config.intermediate_size}, actual={actual_intermediate_size}"
             assert loaded_model.config.num_attention_heads == self.new_num_heads, \
-                "Mismatched number of attention heads"
+                f"Mismatched attention heads: config={loaded_model.config.num_attention_heads}, expected={self.new_num_heads}"
             assert loaded_model.config.num_key_value_heads == self.new_kv_heads, \
-                "Mismatched number of KV heads"
-            assert loaded_model.config.intermediate_size == self.new_intermediate_size, \
-                "Mismatched intermediate size"
-            assert loaded_model.config.hidden_size == self.hidden_size, \
-                "Mismatched hidden size"
+                f"Mismatched KV heads: config={loaded_model.config.num_key_value_heads}, expected={self.new_kv_heads}"
                 
             logger.info("Model configuration verified successfully")
-            
+                
         except AssertionError as e:
             logger.error(f"Configuration verification failed: {str(e)}")
             raise
-
+            
     def get_compression_stats(self) -> Dict[str, float]:
         """Get compression statistics"""
         return {
