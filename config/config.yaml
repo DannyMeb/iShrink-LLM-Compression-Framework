@@ -28,7 +28,7 @@ pruning:
   width_pruning:
     enabled: true
     attention_sparsity: 0.0
-    mlp_sparsity: 0.25
+    mlp_sparsity: 0.01
     # max_pruned_heads: 100
     apply_head_collapse: false
 

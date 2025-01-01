@@ -140,7 +140,7 @@ def process_dataset(tokenizer, args):
             'en',
             streaming=True,
             cache_dir='cache'
-        ).shuffle(seed=42)
+        )
 
         def tokenize_function(examples):
             return tokenizer(
@@ -153,11 +153,11 @@ def process_dataset(tokenizer, args):
 
         logger.info("Processing training dataset...")
         train_processed = []
-        chunk_size = 100
+        chunk_size = 1000
         max_train = args.max_train_samples or 1000
 
         for i in range(0, max_train, chunk_size):
-            chunk = list(dataset["train"].shuffle(seed=42).take(min(chunk_size, max_train - i)))
+            chunk = list(dataset["train"].take(min(chunk_size, max_train - i)))
             chunk_processed = [tokenize_function(example) for example in chunk]
             
             for example in chunk_processed:
@@ -198,14 +198,14 @@ def setup_model(model_path: Path, args: ModelArguments):
         low_cpu_mem_usage=True,
         device_map='auto',
         use_safetensors=True,
-        max_memory={0: "35GB"},
+        max_memory={0: "40GB"},
     )
     
     logger.info("Configuring LoRA...")
     config = LoraConfig(
-        r=16,
+        r=32,
         lora_alpha=32,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj","gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj", q_proj", "v_proj", "k_proj", "o_proj",
+        target_modules=["gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj", q_proj", "v_proj", "k_proj", "o_proj",
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
@@ -227,7 +227,7 @@ def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArgum
         output_dir=str(output_dir),
         per_device_train_batch_size=args.batch_size,
         per_device_eval_batch_size=1,
-        gradient_accumulation_steps=2,
+        gradient_accumulation_steps=8,
         learning_rate=args.learning_rate,
         num_train_epochs=args.num_train_epochs,
         warmup_steps=100,

@@ -11,7 +11,7 @@
   "hidden_act": "silu",
   "hidden_size": 2048,
   "initializer_range": 0.02,
-  "intermediate_size": 6144,
+  "intermediate_size": 8028,
   "max_position_embeddings": 131072,
   "mlp_bias": false,
   "model_type": "llama",

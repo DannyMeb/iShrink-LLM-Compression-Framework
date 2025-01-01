@@ -19,6 +19,15 @@ from thop import profile
 logger = logging.getLogger(__name__)
 
 @dataclass
+class AccuracyMetrics:
+    """Stores accuracy metrics for different tasks"""
+    mmlu: float
+    openbookqa: float
+    winogrande: float  
+    hellaswag: float
+    zero_shot_average: float
+
+@dataclass
 class ComputeMetrics:
     """Stores compute-related metrics"""
     flops: int                  # Total FLOPs
@@ -56,7 +65,7 @@ class CostMetrics:
 @dataclass
 class ModelMetrics:
     """Stores comprehensive model metrics."""
-    accuracy: float
+    accuracy: AccuracyMetrics
     latency: float  # ms
     throughput: float  # samples/second
     memory_footprint: Dict[str, float] 
@@ -161,8 +170,7 @@ class MetricsTracker:
             'operation_rate': 0.05       # USD per million FLOPs
         }
     
-    def _measure_accuracy(self, model: torch.nn.Module, tokenizer) -> float:
-        """Measure model accuracy using lm_eval framework"""
+    def _measure_accuracy(self, model: torch.nn.Module, tokenizer) -> Dict[str, float]:
         try:
             from lm_eval import evaluator, tasks
             from lm_eval.models.huggingface import HFLM
@@ -170,6 +178,7 @@ class MetricsTracker:
             lm_eval_logger = logging.getLogger('lm-eval')
             lm_eval_logger.setLevel(logging.ERROR)  # This will suppress warnings, only show errors
             
+            results = {}
             model_args = {
                 "pretrained": model,
                 "tokenizer": tokenizer,
@@ -178,29 +187,32 @@ class MetricsTracker:
                 "trust_remote_code": True
             }
             
-            hf_model = HFLM(**model_args)
+            # Run evaluations sequentially
+            for task_group in [["mmlu"], ["openbookqa", "winogrande", "hellaswag"]]:
+                num_fewshot = 5 if "mmlu" in task_group else 0
+                hf_model = HFLM(**model_args)
+                
+                task_results = evaluator.simple_evaluate(
+                    model=hf_model,
+                    tasks=task_group,
+                    num_fewshot=num_fewshot,
+                    limit=0.5 if "mmlu" in task_group else None,
+                    device=str(self.device)
+                )
+                
+                # Store results
+                for task in task_group:
+                    results[task] = float(task_results['results'][task].get('acc,none', 
+                                        task_results['results'][task].get('acc', 0)))
+                
+                # Clear memory
+                del hf_model
+                torch.cuda.empty_cache()
             
-            results = evaluator.simple_evaluate(
-                model=hf_model,
-                tasks=["mmlu"],
-                num_fewshot=5,
-                limit=0.5,
-                # bootstrap_iters=10000,
-                device=str(self.device)
-            )
+            results['zero_shot_average'] = sum(results[task] for task in 
+                ['openbookqa', 'winogrande', 'hellaswag']) / 3
             
-            if "mmlu" in results["results"]:
-                mmlu_results = results["results"]["mmlu"]
-                if "acc,none" in mmlu_results:
-                    accuracy = mmlu_results["acc,none"]
-                elif "acc" in mmlu_results:
-                    accuracy = mmlu_results["acc"]
-                else:
-                    raise KeyError("Could not find accuracy metric in MMLU results")
-            else:
-                raise KeyError("Could not find MMLU results in evaluation output")
-            
-            return float(accuracy)
+            return results
             
         except Exception as e:
             logger.error(f"Error during accuracy measurement: {str(e)}")
@@ -444,21 +456,17 @@ class MetricsTracker:
         try:
             logger.info("Starting model evaluation...")
             start_time = time.time()
-            
-            # Measure accuracy
-            logger.info("Measuring accuracy...")
-            accuracy = self._measure_accuracy(model, tokenizer)
-            
+        
             # Measure performance
             logger.info("Measuring performance metrics...")
             latency, throughput = self._measure_performance(model)
             
             # Calculate compute metrics
-            logger.info("Calculating compute metrics...")
+            # logger.info("Calculating compute metrics...")
             compute_metrics = self._calculate_compute_metrics(model)
             
             # Measure memory usage
-            logger.info("Measuring memory usage...")
+            # logger.info("Measuring memory usage...")
             memory_stats = self._measure_memory_usage(model)
             
             # Calculate energy and power metrics
@@ -472,6 +480,17 @@ class MetricsTracker:
                 memory_footprint=memory_stats,
                 power_watts=energy_metrics['power_watts']
             )
+
+             # Measure accuracy
+            logger.info("Measuring accuracy...")
+            accuracy_dict = self._measure_accuracy(model, tokenizer)
+            accuracy = AccuracyMetrics(
+                        mmlu=accuracy_dict['mmlu'],
+                        openbookqa=accuracy_dict['openbookqa'],
+                        winogrande=accuracy_dict['winogrande'],
+                        hellaswag=accuracy_dict['hellaswag'],
+                        zero_shot_average=accuracy_dict['zero_shot_average']
+                    )
             
             # Create and return the final metrics object
             metrics = ModelMetrics(

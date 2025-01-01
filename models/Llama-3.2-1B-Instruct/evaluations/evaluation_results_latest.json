@@ -1,0 +1,49 @@
+{
+  "timestamp": "2024-12-31T18:48:42.747027",
+  "model_type": "initial",
+  "model_path": "/home/daniel.gebre/Thesis/LLM-Compression/models/Llama-3.2-1B-Instruct",
+  "adapter_path": null,
+  "model_config": null,
+  "sparsification_stats": null,
+  "metrics": {
+    "accuracy": 0.4506541524459613,
+    "latency_ms": 20.76861262321472,
+    "throughput": 48.149581204197574,
+    "parameter_count": 1235746816,
+    "active_parameters": 1235745127,
+    "sparsity": 1.3667848285381368e-06,
+    "compute": {
+      "flops": 507006761472,
+      "macs": 253503380736,
+      "memory_footprint": {
+        "gpu_allocated": 742.1416015625,
+        "gpu_cached": 3130.0,
+        "cpu_memory": 1732.21484375
+      },
+      "activation_memory_mb": 871.3994140625
+    },
+    "compute_metrics": {
+      "flops": 507006761472,
+      "macs": 253503380736,
+      "parameter_count": 1235746816,
+      "active_parameter_count": 1235745127,
+      "sparsity": 1.3667848285381368e-06,
+      "bandwidth_usage": 0.0,
+      "cache_hits": 1.0,
+      "activation_memory": 871.3994140625,
+      "attention_params": 167772160,
+      "attention_nonzero": 167771911,
+      "attention_sparsity": 1.484155654929431e-06,
+      "mlp_params": 805306368,
+      "mlp_nonzero": 805305237,
+      "mlp_sparsity": 1.4044344425201416e-06,
+      "embedding_params": 262668288
+    },
+    "cost_metrics": {
+      "inference_cost_usd": 61.787259652640735,
+      "gpu_time_cost": 2.8845295310020445e-06,
+      "memory_cost": 4.181112042758173e-07,
+      "total_operation_cost": 61.78725635
+    }
+  }
+}
