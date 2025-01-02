@@ -7,3 +7,4 @@
 
 /archive
 /experiments/results/finetuned_models
+/experiments/results/**/finetuned_models/finetuned_pruned_model/checkpoint**

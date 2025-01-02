@@ -336,25 +336,25 @@ class PruningPipeline:
             stage_times['importance_scoring'] = time.time() - stage_start
             
             # 4 Progressive Sparsification Analysis
-            stage_start = time.time()
-            logger.info("\n" + "="*50)
-            logger.info("Starting Zero-out Sparsification Analysis...")
+            # stage_start = time.time()
+            # logger.info("\n" + "="*50)
+            # logger.info("Starting Zero-out Sparsification Analysis...")
             
-            sparsifier = ProgressiveSparsifier(
-                model=model,
-                tokenizer=tokenizer,
-                save_dir=self.model_base_dir / 'sparsified_models'
-            )
+            # sparsifier = ProgressiveSparsifier(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     save_dir=self.model_base_dir / 'sparsified_models'
+            # )
             
-            try:
-                sparsify_timing = sparsifier.sparsify(pruning_units)
-                stage_times['progressive_sparsification'] = time.time() - stage_start
-                for timing_key, timing_value in sparsify_timing.items():
-                    stage_times[f'sparsify_{timing_key}'] = timing_value
-                logger.info("\nProgressive sparsification completed successfully")
-            except Exception as e:
-                logger.error(f"Error during progressive sparsification: {str(e)}")
-                logger.warning("Continuing with main pruning pipeline...")
+            # try:
+            #     sparsify_timing = sparsifier.sparsify(pruning_units)
+            #     stage_times['progressive_sparsification'] = time.time() - stage_start
+            #     for timing_key, timing_value in sparsify_timing.items():
+            #         stage_times[f'sparsify_{timing_key}'] = timing_value
+            #     logger.info("\nProgressive sparsification completed successfully")
+            # except Exception as e:
+            #     logger.error(f"Error during progressive sparsification: {str(e)}")
+            #     logger.warning("Continuing with main pruning pipeline...")
 
             # 5. Setup Pruner
             stage_start = time.time()
