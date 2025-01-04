@@ -1,5 +1,9 @@
 #!/bin/bash
 
+export CUDA_VISIBLE_DEVICES=0
+export WANDB_MODE=disabled
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'

@@ -5,7 +5,7 @@ import torch
 import yaml
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict, Sequence
 from transformers import (
     LlamaForCausalLM,
     AutoTokenizer,
@@ -72,12 +72,6 @@ def load_config():
 
 def enable_input_require_grads(model):
     """Enable gradient checkpointing with proper hooks"""
-    def get_lowest_module(module):
-        if len(list(module.children())) == 0:
-            return module
-        else:
-            return get_lowest_module(list(module.children())[0])
-
     def make_inputs_require_grads(module, input, output):
         output.requires_grad_(True)
 
@@ -107,7 +101,6 @@ def get_sparsity_level():
 
 def get_model_path():
     """Get model path based on user choice"""
-    # Load config and extract model name
     config = load_config()
     model_name = config['model']['name'].split('/')[-1]
     model_base_dir = PROJECT_ROOT / "experiments" / "results" / model_name
@@ -115,11 +108,9 @@ def get_model_path():
     choice = get_model_choice()
     
     if choice == 1:
-        # Load from pruned model directory
         model_path = model_base_dir / 'pruned_model'
         output_dir = model_base_dir / 'finetuned_models' / 'finetuned_pruned_model'
     else:
-        # Load from sparsified model directory
         sparsity = get_sparsity_level()
         model_path = model_base_dir / 'sparsified_models' / f"sparsified_model_at_{sparsity}%"
         output_dir = model_base_dir / 'finetuned_models' / f"sparsified_model_at_{sparsity}%_finetuned"
@@ -132,59 +123,98 @@ def get_model_path():
     
     return model_path, output_dir
 
-def process_dataset(tokenizer, args):
-    logger.info("Loading C4 dataset...")
-    try:
-        dataset = load_dataset(
-            'allenai/c4',
-            'en',
-            streaming=True,
-            cache_dir='cache'
+def format_alpaca_prompt(example: Dict) -> str:
+    """Format the Alpaca prompt according to the standard template"""
+    if example.get("input"):
+        return (
+            f"### Instruction:\n{example['instruction']}\n\n"
+            f"### Input:\n{example['input']}\n\n"
+            f"### Response:\n{example['output']}"
         )
+    return (
+        f"### Instruction:\n{example['instruction']}\n\n"
+        f"### Response:\n{example['output']}"
+    )
 
+def process_dataset(tokenizer, args):
+    logger.info("Loading Alpaca-cleaned dataset...")
+    try:
+        dataset = load_dataset("yahma/alpaca-cleaned")
+        
+        # Split the dataset into train and validation
+        split_dataset = dataset["train"].train_test_split(
+            test_size=0.1, 
+            seed=42
+        )
+        
         def tokenize_function(examples):
-            return tokenizer(
-                examples["text"],
+            # Format prompts for all examples in the batch
+            formatted_prompts = []
+            for i in range(len(examples['instruction'])):
+                instruction = examples['instruction'][i]
+                input_text = examples['input'][i]
+                output = examples['output'][i]
+                
+                if input_text and input_text.strip():
+                    prompt = f"### Instruction:\n{instruction}\n\n### Input:\n{input_text}\n\n### Response:\n{output}"
+                else:
+                    prompt = f"### Instruction:\n{instruction}\n\n### Response:\n{output}"
+                formatted_prompts.append(prompt)
+            
+            # Tokenize the formatted prompts
+            tokenized = tokenizer(
+                formatted_prompts,
                 truncation=True,
                 max_length=args.block_size,
                 padding="max_length",
                 return_tensors=None,
             )
-
+            
+            return tokenized
+        
         logger.info("Processing training dataset...")
-        train_processed = []
-        chunk_size = 100
-        max_train = args.max_train_samples or 1000
-
-        for i in range(0, max_train, chunk_size):
-            chunk = list(dataset["train"].take(min(chunk_size, max_train - i)))
-            chunk_processed = [tokenize_function(example) for example in chunk]
+        if args.max_train_samples:
+            train_dataset = split_dataset["train"].select(range(min(len(split_dataset["train"]), args.max_train_samples)))
+        else:
+            train_dataset = split_dataset["train"]
             
-            for example in chunk_processed:
-                example["labels"] = example["input_ids"].copy()
-            
-            train_processed.extend(chunk_processed)
-            torch.cuda.empty_cache()
-            logger.info(f"Processed {len(train_processed)}/{max_train} training examples")
-
-        eval_processed = None
+        train_tokenized = train_dataset.map(
+            tokenize_function,
+            batched=True,
+            remove_columns=train_dataset.column_names,
+            desc="Tokenizing training dataset",
+        )
+        
+        # Add labels for training
+        train_tokenized = train_tokenized.map(
+            lambda examples: {"labels": examples["input_ids"]},
+            batched=True,
+            desc="Adding labels to training dataset",
+        )
+        
+        eval_tokenized = None
         if args.do_eval:
             logger.info("Processing validation dataset...")
-            eval_processed = []
-            max_eval = args.max_eval_samples or 100
-
-            for i in range(0, max_eval, chunk_size):
-                chunk = list(dataset["validation"].take(min(chunk_size, max_eval - i)))
-                chunk_processed = [tokenize_function(example) for example in chunk]
+            if args.max_eval_samples:
+                eval_dataset = split_dataset["test"].select(range(min(len(split_dataset["test"]), args.max_eval_samples)))
+            else:
+                eval_dataset = split_dataset["test"]
                 
-                for example in chunk_processed:
-                    example["labels"] = example["input_ids"].copy()
-                
-                eval_processed.extend(chunk_processed)
-                torch.cuda.empty_cache()
-                logger.info(f"Processed {len(eval_processed)}/{max_eval} validation examples")
+            eval_tokenized = eval_dataset.map(
+                tokenize_function,
+                batched=True,
+                remove_columns=eval_dataset.column_names,
+                desc="Tokenizing validation dataset",
+            )
+            
+            # Add labels for evaluation
+            eval_tokenized = eval_tokenized.map(
+                lambda examples: {"labels": examples["input_ids"]},
+                batched=True,
+                desc="Adding labels to validation dataset",
+            )
 
-        return train_processed, eval_processed
+        return train_tokenized, eval_tokenized
 
     except Exception as e:
         logger.error(f"Error loading dataset: {str(e)}")
@@ -205,7 +235,7 @@ def setup_model(model_path: Path, args: ModelArguments):
     config = LoraConfig(
         r=8,
         lora_alpha=16,
-        target_modules=["gate_proj", "up_proj", "down_proj"],  # "q_proj", "v_proj", "k_proj", "o_proj"
+        target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj", "up_proj", "down_proj"],
         lora_dropout=0.05,
         bias="none",
         task_type="CAUSAL_LM",
@@ -213,13 +243,11 @@ def setup_model(model_path: Path, args: ModelArguments):
     
     model = get_peft_model(model, config)
     
-    # Enable gradient checkpointing with proper hooks
     if model.config.use_cache:
         model.config.use_cache = False
         enable_input_require_grads(model)
     
     model.print_trainable_parameters()
-    
     return model
 
 def setup_training_args(args: ModelArguments, output_dir: Path) -> TrainingArguments:
